@@ -20,13 +20,10 @@ import com.pingidentity.journey.plugin.CallbackRegistry
 class CallbackInitializer : Initializer<CallbackRegistry> {
 
     override fun create(context: Context): CallbackRegistry {
+        // TODO: confirm Journey callback type name(s) with server team; expand to multiple registrations if server sends distinct type per action
         CallbackRegistry.register(
-            "RecognizeInitializeCallback",
-            ::RecognizeInitializeCallback
-        )
-        CallbackRegistry.register(
-            "RecognizeDataCollectionCallback",
-            ::RecognizeDataCollectionCallback
+            "RecognizeActionCallback",
+            ::RecognizeActionCallback
         )
         return CallbackRegistry
     }

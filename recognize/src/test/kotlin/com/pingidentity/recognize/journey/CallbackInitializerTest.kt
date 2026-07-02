@@ -12,19 +12,29 @@ import com.pingidentity.journey.plugin.CallbackRegistry
 import io.mockk.mockk
 import kotlin.test.Test
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 
 class CallbackInitializerTest {
 
     @Test
-    fun `create registers both Recognize callbacks and returns registry`() {
+    fun `create registers RecognizeActionCallback and returns registry`() {
         val context = mockk<Context>(relaxed = true)
 
         val initializer = CallbackInitializer()
         val result = initializer.create(context)
 
         assertSame(CallbackRegistry, result)
-        assertNotNull(CallbackRegistry.callbacks()["RecognizeInitializeCallback"])
-        assertNotNull(CallbackRegistry.callbacks()["RecognizeDataCollectionCallback"])
+        assertNotNull(CallbackRegistry.callbacks()["RecognizeActionCallback"])
+    }
+
+    @Test
+    fun `create does not register obsolete callback keys`() {
+        val context = mockk<Context>(relaxed = true)
+
+        CallbackInitializer().create(context)
+
+        assertNull(CallbackRegistry.callbacks()["RecognizeInitializeCallback"])
+        assertNull(CallbackRegistry.callbacks()["RecognizeDataCollectionCallback"])
     }
 }
