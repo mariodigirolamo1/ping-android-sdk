@@ -7,8 +7,13 @@
 
 package com.pingidentity.recognize.davinci
 
+import com.pingidentity.recognize.BiomAuthConfigDTO
+import com.pingidentity.recognize.BiomDeenrollConfigDTO
+import com.pingidentity.recognize.BiomEnrollConfigDTO
 import com.pingidentity.recognize.Recognize
 import com.pingidentity.recognize.RecognizeException
+import com.pingidentity.recognize.SetupConfigDTO
+import io.mockk.coEvery
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
 import kotlinx.coroutines.test.runTest
@@ -19,13 +24,10 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * TODO: This test file will be fully rewritten in Task 2 when [RecognizeCollector] is replaced
- *       with the action-driven implementation. The tests here cover only the stub collector.
- */
 class RecognizeCollectorTest {
 
     @BeforeTest
@@ -38,18 +40,25 @@ class RecognizeCollectorTest {
         unmockkObject(Recognize)
     }
 
+    // ── init / id / payload ──────────────────────────────────────────────────
+
     @Test
-    fun initParsesKeyFromJson() {
+    fun initParsesKeyAndActionFromJson() {
         val collector = RecognizeCollector()
-        collector.init(buildJsonObject { put("key", "recognizeKey") })
+        collector.init(buildJsonObject {
+            put("key", "recognizeKey")
+            put("action", "setup")
+        })
         assertEquals("recognizeKey", collector.key)
+        assertEquals("setup", collector.action)
     }
 
     @Test
-    fun initUsesEmptyKeyWhenFieldMissing() {
+    fun initUsesEmptyStringsWhenFieldsMissing() {
         val collector = RecognizeCollector()
         collector.init(buildJsonObject { })
         assertEquals("", collector.key)
+        assertEquals("", collector.action)
     }
 
     @Test
@@ -61,15 +70,115 @@ class RecognizeCollectorTest {
 
     @Test
     fun payloadReturnsNullBeforeCollect() {
-        assertNull(RecognizeCollector().payload())
+        val collector = RecognizeCollector()
+        collector.init(buildJsonObject { put("key", "k") ; put("action", "setup") })
+        assertNull(collector.payload())
+    }
+
+    // ── collect — success paths (one test per action) ────────────────────────
+
+    @Test
+    fun collectDispatchesSetupAndStoresResult() = runTest {
+        val expected = buildJsonObject { put("result", "setup_ok") }
+        coEvery { Recognize.setup(any<SetupConfigDTO>()) } returns expected
+
+        val collector = RecognizeCollector()
+        collector.init(buildJsonObject { put("key", "k") ; put("action", "setup") })
+
+        val result = collector.collect()
+
+        assertTrue(result.isSuccess)
+        assertEquals(expected, result.getOrNull())
+        assertEquals(expected, collector.payload())
     }
 
     @Test
-    fun collectReturnsFailureWithStubException() = runTest {
-        // The stub collector always returns failure with a RecognizeException until Task 2 wires
-        // in real action-driven dispatch.
-        val result = RecognizeCollector().collect()
+    fun collectDispatchesBiomEnrollAndStoresResult() = runTest {
+        val expected = buildJsonObject { put("result", "enroll_ok") }
+        coEvery { Recognize.enroll(any<BiomEnrollConfigDTO>()) } returns expected
+
+        val collector = RecognizeCollector()
+        collector.init(buildJsonObject { put("key", "k") ; put("action", "biom_enroll") })
+
+        val result = collector.collect()
+
+        assertTrue(result.isSuccess)
+        assertEquals(expected, result.getOrNull())
+        assertEquals(expected, collector.payload())
+    }
+
+    @Test
+    fun collectDispatchesBiomAuthAndStoresResult() = runTest {
+        val expected = buildJsonObject { put("result", "auth_ok") }
+        coEvery { Recognize.authenticate(any<BiomAuthConfigDTO>()) } returns expected
+
+        val collector = RecognizeCollector()
+        collector.init(buildJsonObject { put("key", "k") ; put("action", "biom_auth") })
+
+        val result = collector.collect()
+
+        assertTrue(result.isSuccess)
+        assertEquals(expected, result.getOrNull())
+        assertEquals(expected, collector.payload())
+    }
+
+    @Test
+    fun collectDispatchesBiomDeenrollAndStoresResult() = runTest {
+        val expected = buildJsonObject { put("result", "deenroll_ok") }
+        coEvery { Recognize.deenroll(any<BiomDeenrollConfigDTO>()) } returns expected
+
+        val collector = RecognizeCollector()
+        collector.init(buildJsonObject { put("key", "k") ; put("action", "biom_deenroll") })
+
+        val result = collector.collect()
+
+        assertTrue(result.isSuccess)
+        assertEquals(expected, result.getOrNull())
+        assertEquals(expected, collector.payload())
+    }
+
+    // ── collect — failure paths ──────────────────────────────────────────────
+
+    @Test
+    fun collectReturnsFailureOnSdkException() = runTest {
+        coEvery { Recognize.setup(any<SetupConfigDTO>()) } throws RuntimeException("sdk error")
+
+        val collector = RecognizeCollector()
+        collector.init(buildJsonObject { put("key", "k") ; put("action", "setup") })
+
+        val result = collector.collect()
+
         assertTrue(result.isFailure)
-        assertIs<RecognizeException>(result.exceptionOrNull())
+        assertEquals("sdk error", result.exceptionOrNull()?.message)
+        // payload must not be set after failure
+        assertNull(collector.payload())
+    }
+
+    @Test
+    fun collectReturnsFailureForUnknownAction() = runTest {
+        val collector = RecognizeCollector()
+        collector.init(buildJsonObject { put("key", "k") ; put("action", "unsupported_action") })
+
+        val result = collector.collect()
+
+        assertTrue(result.isFailure)
+        val exception = result.exceptionOrNull()
+        assertNotNull(exception)
+        assertIs<RecognizeException>(exception)
+        assertTrue(
+            exception.message?.contains("unsupported_action") == true,
+            "Exception message should include the unknown action value"
+        )
+    }
+
+    @Test
+    fun payloadRemainsNullAfterFailure() = runTest {
+        coEvery { Recognize.enroll(any<BiomEnrollConfigDTO>()) } throws RecognizeException("fail")
+
+        val collector = RecognizeCollector()
+        collector.init(buildJsonObject { put("key", "k") ; put("action", "biom_enroll") })
+        collector.collect()
+
+        assertNull(collector.payload())
     }
 }

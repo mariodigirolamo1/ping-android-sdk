@@ -10,11 +10,17 @@ package com.pingidentity.recognize.davinci
 import android.content.Context
 import com.pingidentity.davinci.plugin.CollectorFactory
 import io.mockk.mockk
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertNotNull
 import kotlin.test.assertSame
 
 class CollectorInitializerTest {
+
+    @BeforeTest
+    fun setUp() {
+        CollectorFactory.reset()
+    }
 
     @Test
     fun `create registers RECOGNIZE collector and returns factory`() {

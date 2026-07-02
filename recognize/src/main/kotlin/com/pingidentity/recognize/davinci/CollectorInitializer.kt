@@ -20,6 +20,7 @@ import com.pingidentity.davinci.plugin.CollectorFactory
 class CollectorInitializer : Initializer<CollectorFactory> {
 
     override fun create(context: Context): CollectorFactory {
+        // TODO: confirm DaVinci component inputType / type value with server team
         CollectorFactory.register("RECOGNIZE", ::RecognizeCollector)
         return CollectorFactory
     }
