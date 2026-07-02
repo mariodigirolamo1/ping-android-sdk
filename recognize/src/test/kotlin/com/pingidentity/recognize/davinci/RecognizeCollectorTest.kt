@@ -9,7 +9,6 @@ package com.pingidentity.recognize.davinci
 
 import com.pingidentity.recognize.Recognize
 import com.pingidentity.recognize.RecognizeException
-import io.mockk.coEvery
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
 import kotlinx.coroutines.test.runTest
@@ -23,6 +22,10 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+/**
+ * TODO: This test file will be fully rewritten in Task 2 when [RecognizeCollector] is replaced
+ *       with the action-driven implementation. The tests here cover only the stub collector.
+ */
 class RecognizeCollectorTest {
 
     @BeforeTest
@@ -62,25 +65,10 @@ class RecognizeCollectorTest {
     }
 
     @Test
-    fun collectReturnsSuccessWithSignalData() = runTest {
-        coEvery { Recognize.initialize() } returns Unit
-        coEvery { Recognize.data() } returns "signal-payload"
-
-        val collector = RecognizeCollector()
-        val result = collector.collect()
-
-        assertTrue(result.isSuccess)
-        assertEquals("signal-payload", result.getOrNull())
-        assertEquals("signal-payload", collector.payload())
-    }
-
-    @Test
-    fun collectReturnsFailureOnException() = runTest {
-        coEvery { Recognize.initialize() } returns Unit
-        coEvery { Recognize.data() } throws RecognizeException("sdk error")
-
+    fun collectReturnsFailureWithStubException() = runTest {
+        // The stub collector always returns failure with a RecognizeException until Task 2 wires
+        // in real action-driven dispatch.
         val result = RecognizeCollector().collect()
-
         assertTrue(result.isFailure)
         assertIs<RecognizeException>(result.exceptionOrNull())
     }

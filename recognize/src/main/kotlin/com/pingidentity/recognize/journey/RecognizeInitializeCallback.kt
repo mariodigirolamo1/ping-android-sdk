@@ -17,17 +17,13 @@ import kotlin.coroutines.coroutineContext
 /**
  * Journey callback for the Recognize initialization step.
  *
- * Reads SDK configuration parameters sent by the server, configures [Recognize], and
- * calls [Recognize.initialize]. Mirrors [PingOneProtectInitializeCallback] in structure.
- *
- * TODO: extend [init] with the full set of parameters the Recognize server node sends.
- *       Add the corresponding typed properties (backed by `private set`) for each one.
+ * TODO: This file will be deleted in Task 3 and replaced by [RecognizeActionCallback].
+ *       See plan.md Task 3 for details.
  */
 class RecognizeInitializeCallback : AbstractRecognizeCallback() {
 
     /**
-     * TODO: add real Recognize SDK initialization parameters here.
-     * Example fields mirroring Protect (replace / remove as the contract is defined):
+     * TODO: Fields retained as stubs until Task 3 deletes this file.
      */
     var envId: String = ""
         private set
@@ -38,8 +34,8 @@ class RecognizeInitializeCallback : AbstractRecognizeCallback() {
     override fun init(name: String, value: JsonElement) {
         when (name) {
             "envId" -> envId = value.jsonPrimitive.contentOrNull ?: ""
-            "consoleLogEnabled" -> isConsoleLogEnabled = value.jsonPrimitive.contentOrNull?.toBooleanStrictOrNull() ?: false
-            // TODO: map additional server-provided fields
+            "consoleLogEnabled" -> isConsoleLogEnabled =
+                value.jsonPrimitive.contentOrNull?.toBooleanStrictOrNull() ?: false
             else -> {}
         }
     }
@@ -47,16 +43,16 @@ class RecognizeInitializeCallback : AbstractRecognizeCallback() {
     /**
      * Configures and initializes the Recognize SDK using parameters received from the server.
      *
+     * TODO: Task 3 will delete this file; the action-driven dispatch will live in
+     *       [RecognizeActionCallback].
+     *
      * @return [Result.success] on successful initialization, [Result.failure] otherwise.
-     *         On failure the client error is automatically submitted via [error].
      */
     suspend fun start(): Result<Unit> {
         return try {
             Recognize.config {
-                envId = this@RecognizeInitializeCallback.envId.nullIfEmpty()
-                isConsoleLogEnabled = this@RecognizeInitializeCallback.isConsoleLogEnabled
+                // TODO: forward fields once RecognizeConfig carries them
             }
-            Recognize.initialize()
             Result.success(Unit)
         } catch (e: Exception) {
             coroutineContext.ensureActive()
@@ -65,5 +61,3 @@ class RecognizeInitializeCallback : AbstractRecognizeCallback() {
         }
     }
 }
-
-private fun String.nullIfEmpty(): String? = takeIf { it.isNotEmpty() }

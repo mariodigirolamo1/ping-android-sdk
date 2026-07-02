@@ -7,7 +7,7 @@
 
 package com.pingidentity.recognize.journey
 
-import com.pingidentity.recognize.Recognize
+import com.pingidentity.recognize.RecognizeException
 import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.contentOrNull
@@ -17,24 +17,21 @@ import kotlin.coroutines.coroutineContext
 /**
  * Journey callback for the Recognize data-collection step.
  *
- * Triggers [Recognize.data] and submits the resulting signal payload back to PingAM.
- * Mirrors [PingOneProtectEvaluationCallback] in structure.
- *
- * TODO: extend [init] with any additional fields the Recognize evaluation node sends.
+ * TODO: This file will be deleted in Task 3 and replaced by [RecognizeActionCallback].
+ *       See plan.md Task 3 for details.
  */
 class RecognizeDataCollectionCallback : AbstractRecognizeCallback() {
 
     /**
-     * TODO: add Recognize-specific evaluation parameters here.
-     * Example (mirroring Protect's pauseBehavioralData flag):
+     * TODO: Field retained as stub until Task 3 deletes this file.
      */
     var pauseDataCollection: Boolean = false
         private set
 
     override fun init(name: String, value: JsonElement) {
         when (name) {
-            "pauseDataCollection" -> pauseDataCollection = value.jsonPrimitive.contentOrNull?.toBooleanStrictOrNull() ?: false
-            // TODO: map additional server-provided fields
+            "pauseDataCollection" -> pauseDataCollection =
+                value.jsonPrimitive.contentOrNull?.toBooleanStrictOrNull() ?: false
             else -> {}
         }
     }
@@ -42,17 +39,15 @@ class RecognizeDataCollectionCallback : AbstractRecognizeCallback() {
     /**
      * Runs the Recognize SDK data collection and submits the signal to the server.
      *
+     * TODO: Task 3 will delete this file; the action-driven dispatch will live in
+     *       [RecognizeActionCallback].
+     *
      * @return [Result.success] wrapping the signal string, or [Result.failure] on error.
-     *         On failure the client error is automatically submitted via [signal].
      */
     suspend fun collect(): Result<String> {
         return try {
-            val signalData = Recognize.data()
-            if (pauseDataCollection) {
-                Recognize.pauseDataCollection()
-            }
-            signal(signalData, "")
-            Result.success(signalData)
+            // TODO: Task 3 will delete this file and replace with action-driven dispatch.
+            throw RecognizeException("RecognizeDataCollectionCallback.collect() is not yet implemented — see Task 3.")
         } catch (e: Exception) {
             coroutineContext.ensureActive()
             signal("", e.message ?: CLIENT_ERROR)

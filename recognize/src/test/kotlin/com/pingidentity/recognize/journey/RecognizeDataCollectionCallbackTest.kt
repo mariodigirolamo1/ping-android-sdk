@@ -9,13 +9,8 @@ package com.pingidentity.recognize.journey
 
 import com.pingidentity.recognize.Recognize
 import com.pingidentity.recognize.RecognizeException
-import io.mockk.coEvery
-import io.mockk.every
-import io.mockk.just
 import io.mockk.mockkObject
-import io.mockk.runs
 import io.mockk.unmockkObject
-import io.mockk.verify
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -23,8 +18,13 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
+/**
+ * TODO: This test file will be deleted in Task 3 when [RecognizeDataCollectionCallback] is removed.
+ *       Tests below cover only the stub until then.
+ */
 class RecognizeDataCollectionCallbackTest {
 
     private lateinit var jsonPauseTrue: JsonObject
@@ -33,9 +33,6 @@ class RecognizeDataCollectionCallbackTest {
     @BeforeTest
     fun setUp() {
         mockkObject(Recognize)
-        every { Recognize.pauseDataCollection() } just runs
-        every { Recognize.resumeDataCollection() } just runs
-        coEvery { Recognize.data() } returns "the-signal"
 
         jsonPauseTrue = Json.parseToJsonElement(
             """
@@ -70,35 +67,34 @@ class RecognizeDataCollectionCallbackTest {
     }
 
     @Test
-    fun collectSucceedsAndPausesWhenFlagIsTrue() = runTest {
+    fun parsesPauseDataCollectionTrueFromJson() {
         val callback = RecognizeDataCollectionCallback().apply { init(jsonPauseTrue) }
         assertTrue(callback.pauseDataCollection)
-        assertTrue(callback.collect().isSuccess)
-        verify(exactly = 1) { Recognize.pauseDataCollection() }
     }
 
     @Test
-    fun collectSucceedsWithoutPauseWhenFlagIsFalse() = runTest {
+    fun parsesPauseDataCollectionFalseFromJson() {
         val callback = RecognizeDataCollectionCallback().apply { init(jsonPauseFalse) }
         assertFalse(callback.pauseDataCollection)
-        assertTrue(callback.collect().isSuccess)
-        verify(exactly = 0) { Recognize.pauseDataCollection() }
     }
 
     @Test
-    fun collectReturnsFailureOnSdkError() = runTest {
-        coEvery { Recognize.data() } throws RecognizeException("data error")
+    fun collectReturnsFailureWithStubException() = runTest {
+        // The stub callback always returns failure until Task 3 wires in real action-driven dispatch.
         val callback = RecognizeDataCollectionCallback().apply { init(jsonPauseFalse) }
         val result = callback.collect()
         assertTrue(result.isFailure)
+        assertIs<RecognizeException>(result.exceptionOrNull())
     }
 
     @Test
     fun defaultPauseDataCollectionIsFalse() {
         val callback = RecognizeDataCollectionCallback().apply {
-            init(Json.parseToJsonElement(
-                """{"type":"RecognizeDataCollectionCallback","output":[],"input":[]}"""
-            ) as JsonObject)
+            init(
+                Json.parseToJsonElement(
+                    """{"type":"RecognizeDataCollectionCallback","output":[],"input":[]}"""
+                ) as JsonObject
+            )
         }
         assertFalse(callback.pauseDataCollection)
     }

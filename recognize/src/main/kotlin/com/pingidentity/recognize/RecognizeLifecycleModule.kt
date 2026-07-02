@@ -11,56 +11,40 @@ import com.pingidentity.orchestrate.Module
 import com.pingidentity.utils.PingDsl
 
 /**
- * Orchestration module that ties the Recognize SDK lifecycle into the authentication flow.
+ * Orchestration module that propagates global Recognize SDK configuration into the
+ * authentication flow.
+ *
+ * Setup is server-driven: the [RecognizeLifecycle] module does **not** call any Recognize
+ * operation implicitly. Operations ([Recognize.setup], [Recognize.enroll],
+ * [Recognize.authenticate], [Recognize.deenroll]) are invoked only when the server requests
+ * them via the `action` discriminator in the collector or callback JSON.
  *
  * Usage (DaVinci example):
  * ```kotlin
  * daVinci {
  *     module(RecognizeLifecycle) {
- *         envId = "your-env-id"
- *         resumeDataCollectionOnStart = true
- *         pauseDataCollectionOnSuccess = true
+ *         // TODO: add SDK-level config fields here once the contract is confirmed
  *     }
  * }
  * ```
- *
- * The module initializes [Recognize] on flow start, optionally resumes data collection at the
- * beginning of each flow step, and optionally pauses it on successful authentication.
  */
 val RecognizeLifecycle =
     Module.of(::RecognizeLifecycleConfig) {
         init {
             Recognize.config {
-                envId = config.envId
-                isConsoleLogEnabled = config.isConsoleLogEnabled
+                // TODO: forward SDK-level config fields here once RecognizeConfig carries them,
+                //       e.g.: apiKey = config.apiKey
             }
-            Recognize.initialize()
-        }
-
-        start {
-            if (config.resumeDataCollectionOnStart) {
-                Recognize.resumeDataCollection()
-            }
-            it
-        }
-
-        success {
-            if (config.pauseDataCollectionOnSuccess) {
-                Recognize.pauseDataCollection()
-            }
-            it
         }
     }
 
 /**
  * Configuration for [RecognizeLifecycle].
- * Extends [RecognizeConfig] with lifecycle-specific flags.
+ *
+ * TODO: Add lifecycle-specific options once the Recognize SDK contract is confirmed.
+ *       For example: whether to eagerly preload the SDK on workflow init, timeout settings, etc.
+ *       Data-collection lifecycle flags (pause/resume) are intentionally absent — setup is
+ *       server-driven and each operation is requested explicitly by the server.
  */
 @PingDsl
-class RecognizeLifecycleConfig : RecognizeConfig() {
-    /** Pause data collection when authentication succeeds. Default: false. */
-    var pauseDataCollectionOnSuccess: Boolean = false
-
-    /** Resume data collection when the flow starts a new step. Default: false. */
-    var resumeDataCollectionOnStart: Boolean = false
-}
+class RecognizeLifecycleConfig : RecognizeConfig()

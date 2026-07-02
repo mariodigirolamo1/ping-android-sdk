@@ -8,7 +8,7 @@
 package com.pingidentity.recognize.davinci
 
 import com.pingidentity.davinci.plugin.Collector
-import com.pingidentity.recognize.Recognize
+import com.pingidentity.recognize.RecognizeException
 import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -17,12 +17,8 @@ import kotlin.coroutines.coroutineContext
 /**
  * DaVinci [Collector] that drives the Recognize SDK data-collection step.
  *
- * The server sends a RECOGNIZE component node with a JSON payload; this collector
- * reads the parameters, triggers [Recognize.data], and returns the signal string
- * back to the DaVinci flow as the collector's payload.
- *
- * TODO: extend [init] to parse all parameters that the Recognize server node sends
- *       (analogous to how [ProtectCollector] reads `behavioralDataCollection`, `key`, etc.).
+ * TODO: This file will be fully replaced in Task 2 with an action-driven dispatch model.
+ *       See plan.md Task 2 for details.
  */
 class RecognizeCollector : Collector<String> {
 
@@ -45,14 +41,14 @@ class RecognizeCollector : Collector<String> {
     /**
      * Runs the Recognize SDK data collection and stores the result.
      *
+     * TODO: This will be replaced by action-driven dispatch in Task 2.
+     *
      * @return [Result.success] wrapping the signal string, or [Result.failure] on error.
      */
     suspend fun collect(): Result<String> {
         return try {
-            // TODO: configure Recognize with any per-step parameters before calling data()
-            Recognize.initialize()
-            value = Recognize.data()
-            Result.success(value)
+            // TODO: Task 2 will replace this with action-driven dispatch.
+            throw RecognizeException("RecognizeCollector.collect() is not yet implemented — see Task 2.")
         } catch (e: Exception) {
             coroutineContext.ensureActive()
             Result.failure(e)

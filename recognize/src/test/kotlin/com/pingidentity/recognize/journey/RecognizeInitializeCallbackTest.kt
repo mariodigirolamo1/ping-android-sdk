@@ -8,7 +8,6 @@
 package com.pingidentity.recognize.journey
 
 import com.pingidentity.recognize.Recognize
-import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockkObject
@@ -24,6 +23,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
+/**
+ * TODO: This test file will be deleted in Task 3 when [RecognizeInitializeCallback] is removed.
+ *       Tests below cover only the stub until then.
+ */
 class RecognizeInitializeCallbackTest {
 
     private lateinit var typedJson: JsonObject
@@ -33,7 +36,6 @@ class RecognizeInitializeCallbackTest {
     fun setUp() {
         mockkObject(Recognize)
         every { Recognize.config(any()) } just runs
-        coEvery { Recognize.initialize() } just runs
 
         typedJson = Json.parseToJsonElement(
             """
@@ -93,12 +95,10 @@ class RecognizeInitializeCallbackTest {
     }
 
     @Test
-    fun startReturnsFailureAndSetsClientErrorOnException() = runTest {
-        coEvery { Recognize.initialize() } throws RuntimeException("init failed")
+    fun startReturnsSuccessWithStubConfig() = runTest {
         val callback = RecognizeInitializeCallback().apply { init(typedJson) }
         val result = callback.start()
-        assertTrue(result.isFailure)
-        assertEquals("init failed", result.exceptionOrNull()?.message)
+        assertTrue(result.isSuccess)
     }
 
     @Test

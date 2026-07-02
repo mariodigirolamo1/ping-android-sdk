@@ -8,104 +8,121 @@
 package com.pingidentity.recognize
 
 import com.pingidentity.utils.PingDsl
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.json.JsonObject
 
 /**
  * The Recognize object is the central entry point for the Recognize SDK (formerly Keyless).
- * It manages initialization state and exposes the core operations that collectors and
- * callbacks delegate to: [initialize], [data], and pause/resume controls.
+ * It exposes four action-driven suspend operations — [setup], [enroll], [authenticate],
+ * and [deenroll] — corresponding to the four server-directed actions.
  *
- * TODO: Replace stub implementations with real Recognize SDK calls once the artifact is wired in.
+ * Each operation accepts a typed config DTO decoded from the server JSON and returns a
+ * [JsonObject] result to be submitted back to the server.
+ *
+ * TODO: Replace stub implementations with real Recognize SDK calls once the artifact is
+ *       wired in (see `recognize/build.gradle.kts`).
  */
 object Recognize {
 
     private lateinit var recognizeConfig: RecognizeConfig
-    private var isInitialized: Boolean = false
-    private val lock = Mutex()
 
     /**
-     * Configures the Recognize SDK with the provided configuration.
-     * Must be called before [initialize].
+     * Configures the Recognize SDK with the provided configuration block.
+     *
+     * @param config Lambda that mutates the [RecognizeConfig].
      */
     fun config(config: RecognizeConfig.() -> Unit) {
         recognizeConfig = RecognizeConfig().apply(config)
     }
 
     /**
-     * Initializes the Recognize SDK. Idempotent — subsequent calls are no-ops if already
-     * initialized.
+     * Resets any SDK-level state. Useful for test isolation.
      *
-     * @throws RecognizeException if initialization fails.
-     */
-    suspend fun initialize(): Unit = lock.withLock {
-        if (isInitialized) return
-
-        // TODO: invoke the real Recognize SDK initialization here, e.g.:
-        //   RecognizeSDK.init(ContextProvider.context, params) { result ->
-        //       if (result.isSuccess) init.resume(Unit) else init.resumeWithException(...)
-        //   }
-        //
-        // For now this is a no-op placeholder so the module compiles and tests can be
-        // written against the contract.
-        isInitialized = true
-    }
-
-    /**
-     * Resets the initialization state. Useful for testing or when reconfiguration is needed.
+     * TODO: Clear real SDK state once the SDK is wired in.
      */
     fun reset() {
-        isInitialized = false
+        // no-op stub — real SDK state teardown to be added once SDK contract is confirmed
     }
 
     /**
-     * Collects the device signal / recognition data from the Recognize SDK.
+     * Executes the Recognize SDK setup operation.
      *
-     * @return A string payload (e.g. a JWS or JSON blob) to be submitted to the server.
-     * @throws RecognizeException if data collection fails.
+     * @param config The setup parameters decoded from the server JSON.
+     * @return A [JsonObject] result to submit back to the server.
+     * @throws NotImplementedError until the real SDK is wired in.
      */
-    suspend fun data(): String {
-        // TODO: replace with real Recognize SDK data retrieval, e.g.:
-        //   return suspendCancellableCoroutine { cont ->
-        //       RecognizeSDK.getData(object : DataCallback {
-        //           override fun onSuccess(result: String) { cont.resume(result) }
-        //           override fun onFailure(error: String) { cont.resumeWithException(RecognizeException(error)) }
-        //       })
+    suspend fun setup(config: SetupConfigDTO): JsonObject {
+        // TODO: wire in real SDK call — setup
+        //   suspendCancellableCoroutine { cont ->
+        //       RecognizeSDK.setup(config) { result ->
+        //           if (result.isSuccess) cont.resume(result.toJsonObject())
+        //           else cont.resumeWithException(RecognizeException(result.errorMessage))
+        //       }
         //   }
-        throw RecognizeException("Recognize.data() is not yet implemented — wire in the SDK.")
+        TODO("TODO: wire in real SDK call — setup")
     }
 
     /**
-     * Pauses data collection in the Recognize SDK.
-     * No-op placeholder until the SDK is wired in.
+     * Executes the Recognize SDK biometric enroll operation.
+     *
+     * @param config The enroll parameters decoded from the server JSON.
+     * @return A [JsonObject] result to submit back to the server.
+     * @throws NotImplementedError until the real SDK is wired in.
      */
-    fun pauseDataCollection() {
-        // TODO: RecognizeSDK.pauseDataCollection()
+    suspend fun enroll(config: BiomEnrollConfigDTO): JsonObject {
+        // TODO: wire in real SDK call — enroll
+        //   suspendCancellableCoroutine { cont ->
+        //       RecognizeSDK.enroll(config) { result ->
+        //           if (result.isSuccess) cont.resume(result.toJsonObject())
+        //           else cont.resumeWithException(RecognizeException(result.errorMessage))
+        //       }
+        //   }
+        TODO("TODO: wire in real SDK call — enroll")
     }
 
     /**
-     * Resumes data collection in the Recognize SDK.
-     * No-op placeholder until the SDK is wired in.
+     * Executes the Recognize SDK biometric authentication operation.
+     *
+     * @param config The authentication parameters decoded from the server JSON.
+     * @return A [JsonObject] result to submit back to the server.
+     * @throws NotImplementedError until the real SDK is wired in.
      */
-    fun resumeDataCollection() {
-        // TODO: RecognizeSDK.resumeDataCollection()
+    suspend fun authenticate(config: BiomAuthConfigDTO): JsonObject {
+        // TODO: wire in real SDK call — authenticate
+        //   suspendCancellableCoroutine { cont ->
+        //       RecognizeSDK.authenticate(config) { result ->
+        //           if (result.isSuccess) cont.resume(result.toJsonObject())
+        //           else cont.resumeWithException(RecognizeException(result.errorMessage))
+        //       }
+        //   }
+        TODO("TODO: wire in real SDK call — authenticate")
+    }
+
+    /**
+     * Executes the Recognize SDK biometric de-enroll operation.
+     *
+     * @param config The de-enroll parameters decoded from the server JSON.
+     * @return A [JsonObject] result to submit back to the server.
+     * @throws NotImplementedError until the real SDK is wired in.
+     */
+    suspend fun deenroll(config: BiomDeenrollConfigDTO): JsonObject {
+        // TODO: wire in real SDK call — deenroll
+        //   suspendCancellableCoroutine { cont ->
+        //       RecognizeSDK.deenroll(config) { result ->
+        //           if (result.isSuccess) cont.resume(result.toJsonObject())
+        //           else cont.resumeWithException(RecognizeException(result.errorMessage))
+        //       }
+        //   }
+        TODO("TODO: wire in real SDK call — deenroll")
     }
 }
 
 /**
  * Configuration for the Recognize SDK.
  *
- * Extend this class with the parameters required by the Recognize SDK once the integration
- * contract is known. The fields below are illustrative placeholders.
+ * TODO: Add the SDK-level parameters (endpoint, API key, tenant URL, credentials, feature flags,
+ *       etc.) once the Recognize SDK integration contract is confirmed. These are global/persistent
+ *       parameters that apply to all operations — per-action parameters come from the server JSON
+ *       and are decoded into the typed DTOs ([SetupConfigDTO], [BiomEnrollConfigDTO], etc.).
  */
 @PingDsl
-open class RecognizeConfig {
-    /**
-     * TODO: Replace / extend with real Recognize SDK configuration parameters.
-     * Example: environment identifier, tenant URL, feature flags, etc.
-     */
-    var envId: String? = null
-
-    /** Whether to enable verbose console logging from the Recognize SDK. */
-    var isConsoleLogEnabled: Boolean = false
-}
+open class RecognizeConfig
