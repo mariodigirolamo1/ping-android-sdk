@@ -15,12 +15,17 @@ pluginManagement {
     }
 }
 
+val cloudsmithTokenRecognize: String by settings
+val cloudsmithTokenAesWrap: String by settings
+
 dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
         //mavenLocal()
         maven(url = "https://central.sonatype.com/repository/maven-snapshots/")
+        maven(url = "https://dl.cloudsmith.io/$cloudsmithTokenRecognize/keyless/keyless/maven/")
+        maven(url = "https://dl.cloudsmith.io/$cloudsmithTokenAesWrap/keyless/aeswrap/maven/")
     }
 }
 

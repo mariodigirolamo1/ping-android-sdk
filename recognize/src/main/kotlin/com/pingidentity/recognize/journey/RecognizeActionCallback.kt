@@ -11,11 +11,12 @@ import com.pingidentity.recognize.BiomAuthConfigDTO
 import com.pingidentity.recognize.BiomDeenrollConfigDTO
 import com.pingidentity.recognize.BiomEnrollConfigDTO
 import com.pingidentity.recognize.Recognize
-import com.pingidentity.recognize.RecognizeException
 import com.pingidentity.recognize.SetupConfigDTO
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.coroutines.coroutineContext
@@ -104,26 +105,28 @@ class RecognizeActionCallback : AbstractRecognizeCallback() {
             val sdkResult = when (action) {
                 "setup" ->
                     // TODO: construct SetupConfigDTO from fields decoded in init() once server contract confirmed
-                    Recognize.setup(SetupConfigDTO())
+                    // TODO: just using this for tests
+                    Recognize.setup(SetupConfigDTO(
+                        apiKey = "",
+                        hosts = emptyList()
+                    ))
                 "biom_enroll" ->
                     // TODO: construct BiomEnrollConfigDTO from fields decoded in init() once server contract confirmed
                     Recognize.enroll(BiomEnrollConfigDTO())
                 "biom_auth" ->
                     // TODO: construct BiomAuthConfigDTO from fields decoded in init() once server contract confirmed
                     Recognize.authenticate(BiomAuthConfigDTO())
-                "biom_deenroll" ->
-                    // TODO: construct BiomDeenrollConfigDTO from fields decoded in init() once server contract confirmed
-                    Recognize.deenroll(BiomDeenrollConfigDTO())
                 else -> {
-                    val ex = RecognizeException("Unknown action: $action")
+                    val ex = _root_ide_package_.kotlin.Exception("Unknown action: $action")
                     error(ex.message ?: CLIENT_ERROR)
                     return Result.failure(ex)
                 }
             }
             signal(sdkResult.toString(), "")
-            Result.success(sdkResult)
+            // TODO: use actual result as json in place of placeholder
+            Result.success(buildJsonObject {  })
         } catch (e: Exception) {
-            coroutineContext.ensureActive()
+            currentCoroutineContext().ensureActive()
             error(e.message ?: CLIENT_ERROR)
             Result.failure(e)
         }
