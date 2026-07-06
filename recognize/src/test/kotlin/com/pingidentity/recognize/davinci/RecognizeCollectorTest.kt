@@ -11,7 +11,6 @@ import com.pingidentity.recognize.BiomAuthConfigDTO
 import com.pingidentity.recognize.BiomDeenrollConfigDTO
 import com.pingidentity.recognize.BiomEnrollConfigDTO
 import com.pingidentity.recognize.Recognize
-import com.pingidentity.recognize.RecognizeException
 import com.pingidentity.recognize.SetupConfigDTO
 import io.mockk.coEvery
 import io.mockk.mockkObject

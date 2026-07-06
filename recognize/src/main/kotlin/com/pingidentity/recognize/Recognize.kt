@@ -7,122 +7,137 @@
 
 package com.pingidentity.recognize
 
-import com.pingidentity.utils.PingDsl
+import io.keyless.sdk.Keyless
+import io.keyless.sdk.configurations.SetupConfig
+import io.keyless.sdk.configurations.auth.BiomAuthConfig
+import io.keyless.sdk.configurations.enroll.BiomEnrollConfig
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonObject
+import kotlin.coroutines.resumeWithException
 
-/**
- * The Recognize object is the central entry point for the Recognize SDK (formerly Keyless).
- * It exposes four action-driven suspend operations — [setup], [enroll], [authenticate],
- * and [deenroll] — corresponding to the four server-directed actions.
- *
- * Each operation accepts a typed config DTO decoded from the server JSON and returns a
- * [JsonObject] result to be submitted back to the server.
- *
- * TODO: Replace stub implementations with real Recognize SDK calls once the artifact is
- *       wired in (see `recognize/build.gradle.kts`).
- */
 object Recognize {
+    internal suspend fun setup(
+        setupConfigDTO: SetupConfigDTO
+    ) = suspendCancellableCoroutine { continuation ->
+        Keyless.configure(
+            // TODO: allow other params config if needed, this is just for quick tests 
+            SetupConfig(
+                apiKey = setupConfigDTO.apiKey,
+                hosts = setupConfigDTO.hosts
+            )
+        ) { result ->
+            when (result) {
+                is Keyless.KeylessResult.Success -> {
+                    continuation.resume(
+                        value = Result.success(result.value)
+                    ) { cause, _, _ ->
+                        // TODO: might handle this cause in case of cancellation
+                    }
+                }
 
-    private lateinit var recognizeConfig: RecognizeConfig
-
-    /**
-     * Configures the Recognize SDK with the provided configuration block.
-     *
-     * @param config Lambda that mutates the [RecognizeConfig].
-     */
-    fun config(config: RecognizeConfig.() -> Unit) {
-        recognizeConfig = RecognizeConfig().apply(config)
+                is Keyless.KeylessResult.Failure -> {
+                    continuation.resume(
+                        value = Result.failure(result.error)
+                    ) { cause, _, _ ->
+                        // TODO: might handle this cause in case of cancellation
+                    }
+                }
+            }
+        }
     }
 
-    /**
-     * Resets any SDK-level state. Useful for test isolation.
-     *
-     * TODO: Clear real SDK state once the SDK is wired in.
-     */
-    fun reset() {
-        // no-op stub — real SDK state teardown to be added once SDK contract is confirmed
+    suspend fun enroll(
+        config: BiomEnrollConfigDTO
+    ): JsonObject = suspendCancellableCoroutine { cont ->
+        // TODO: should use incoming DTO config 
+        Keyless.enroll(
+            configuration = BiomEnrollConfig()
+        ) { result ->
+            when(result) {
+                is Keyless.KeylessResult.Success -> {
+                    val recognizeEnrollmentResult = with(result.value) {
+                        RecognizeEnrollmentResult(
+                            keylessId = keylessId,
+                            signedJwt = signedJwt,
+                            clientState = clientState,
+                            secret = secret?.value?.rawValue,
+                            secretIDs = secretIDs.map {
+                                it.rawValue
+                            }.toSet()
+                        )
+                    }
+
+                    val jsonObjectResult = Json.encodeToJsonElement(
+                        recognizeEnrollmentResult
+                    ).jsonObject
+
+                    cont.resume(jsonObjectResult) { cause, _, _ ->
+                        // TODO: handle cancellation
+                    }
+                }
+                is Keyless.KeylessResult.Failure -> {
+                    // TODO: does it need wrapper eception? 
+                    cont.resumeWithException(result.error)
+                }
+            }
+        }
     }
 
-    /**
-     * Executes the Recognize SDK setup operation.
-     *
-     * @param config The setup parameters decoded from the server JSON.
-     * @return A [JsonObject] result to submit back to the server.
-     * @throws NotImplementedError until the real SDK is wired in.
-     */
-    suspend fun setup(config: SetupConfigDTO): JsonObject {
-        // TODO: wire in real SDK call — setup
-        //   suspendCancellableCoroutine { cont ->
-        //       RecognizeSDK.setup(config) { result ->
-        //           if (result.isSuccess) cont.resume(result.toJsonObject())
-        //           else cont.resumeWithException(RecognizeException(result.errorMessage))
-        //       }
-        //   }
-        TODO("TODO: wire in real SDK call — setup")
-    }
+    suspend fun authenticate(
+        config: BiomAuthConfigDTO
+    ): JsonObject = suspendCancellableCoroutine { cont ->
+        Keyless.authenticate(configuration = BiomAuthConfig()) { result ->
+            when(result) {
+                is Keyless.KeylessResult.Success -> {
+                    val recognizeAuthenticationResult = with(result.value) {
+                        RecognizeAuthenticationResult(
+                            signedJwt = signedJwt,
+                            clientState = clientState,
+                            secret = secret?.value?.rawValue,
+                            secretIDs = secretIDs.map {
+                                it.rawValue
+                            }.toSet()
+                        )
+                    }
 
-    /**
-     * Executes the Recognize SDK biometric enroll operation.
-     *
-     * @param config The enroll parameters decoded from the server JSON.
-     * @return A [JsonObject] result to submit back to the server.
-     * @throws NotImplementedError until the real SDK is wired in.
-     */
-    suspend fun enroll(config: BiomEnrollConfigDTO): JsonObject {
-        // TODO: wire in real SDK call — enroll
-        //   suspendCancellableCoroutine { cont ->
-        //       RecognizeSDK.enroll(config) { result ->
-        //           if (result.isSuccess) cont.resume(result.toJsonObject())
-        //           else cont.resumeWithException(RecognizeException(result.errorMessage))
-        //       }
-        //   }
-        TODO("TODO: wire in real SDK call — enroll")
-    }
+                    val jsonObjectResult = Json.encodeToJsonElement(
+                        recognizeAuthenticationResult
+                    ).jsonObject
 
-    /**
-     * Executes the Recognize SDK biometric authentication operation.
-     *
-     * @param config The authentication parameters decoded from the server JSON.
-     * @return A [JsonObject] result to submit back to the server.
-     * @throws NotImplementedError until the real SDK is wired in.
-     */
-    suspend fun authenticate(config: BiomAuthConfigDTO): JsonObject {
-        // TODO: wire in real SDK call — authenticate
-        //   suspendCancellableCoroutine { cont ->
-        //       RecognizeSDK.authenticate(config) { result ->
-        //           if (result.isSuccess) cont.resume(result.toJsonObject())
-        //           else cont.resumeWithException(RecognizeException(result.errorMessage))
-        //       }
-        //   }
-        TODO("TODO: wire in real SDK call — authenticate")
-    }
+                    cont.resume(value = jsonObjectResult) { cause, _, _ ->
+                        // TODO: handle cancellation
+                    }
+                }
 
-    /**
-     * Executes the Recognize SDK biometric de-enroll operation.
-     *
-     * @param config The de-enroll parameters decoded from the server JSON.
-     * @return A [JsonObject] result to submit back to the server.
-     * @throws NotImplementedError until the real SDK is wired in.
-     */
-    suspend fun deenroll(config: BiomDeenrollConfigDTO): JsonObject {
-        // TODO: wire in real SDK call — deenroll
-        //   suspendCancellableCoroutine { cont ->
-        //       RecognizeSDK.deenroll(config) { result ->
-        //           if (result.isSuccess) cont.resume(result.toJsonObject())
-        //           else cont.resumeWithException(RecognizeException(result.errorMessage))
-        //       }
-        //   }
-        TODO("TODO: wire in real SDK call — deenroll")
+                is Keyless.KeylessResult.Failure -> {
+                    // TODO: does it need wrapper eception?
+                    cont.resumeWithException(result.error)
+                }
+            }
+
+        }
     }
 }
 
-/**
- * Configuration for the Recognize SDK.
- *
- * TODO: Add the SDK-level parameters (endpoint, API key, tenant URL, credentials, feature flags,
- *       etc.) once the Recognize SDK integration contract is confirmed. These are global/persistent
- *       parameters that apply to all operations — per-action parameters come from the server JSON
- *       and are decoded into the typed DTOs ([SetupConfigDTO], [BiomEnrollConfigDTO], etc.).
- */
-@PingDsl
-open class RecognizeConfig
+// TODO: missing enrollment frame
+@Serializable
+data class RecognizeEnrollmentResult(
+    val keylessId: String?,
+    val signedJwt: String?,
+    val clientState: String?,
+    val secret: String?,
+    val secretIDs: Set<String>
+)
+
+// TODO: missing authentication frame
+@Serializable
+data class RecognizeAuthenticationResult(
+    val signedJwt: String?,
+    val clientState: String?,
+    val secret: String?,
+    val secretIDs: Set<String>
+)

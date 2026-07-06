@@ -27,7 +27,7 @@ dependencies {
     implementation(project(":foundation:davinci-plugin"))
     implementation(project(":foundation:journey-plugin"))
     // TODO: replace with actual Recognize SDK artifact coordinates once known
-    // implementation(libs.com.pingidentity.recognize)
+    implementation(libs.com.pingidentity.recognize)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.androidx.startup.runtime)
 

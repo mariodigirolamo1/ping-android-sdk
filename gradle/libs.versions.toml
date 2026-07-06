@@ -55,7 +55,7 @@ startupRuntime = "1.2.0"
 
 com-pingidentity-signals = "5.3.0"
 # TODO: replace with actual Recognize SDK version once the artifact coordinates are confirmed
-com-pingidentity-recognize = "0.0.0"
+com-pingidentity-recognize = "5.8.4"
 kotlin-playservices-coroutine = "1.10.2"
 
 barcodeScanning = "17.3.0"
@@ -143,7 +143,7 @@ facebook-login = { module = "com.facebook.android:facebook-login", version.ref =
 androidx-startup-runtime = { group = "androidx.startup", name = "startup-runtime", version.ref = "startupRuntime" }
 com-pingidentity-signals = { group = "com.pingidentity.signals", name = "android-sdk", version.ref = "com-pingidentity-signals" }
 # TODO: replace group/name with actual Recognize SDK artifact coordinates
-com-pingidentity-recognize = { group = "com.pingidentity.recognize", name = "android-sdk", version.ref = "com-pingidentity-recognize" }
+com-pingidentity-recognize = { group = "io.keyless", name = "keyless-mobile-sdk", version.ref = "com-pingidentity-recognize" }
 androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "cameraCamera2" }
 androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "cameraCamera2" }
 androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "cameraCamera2" }

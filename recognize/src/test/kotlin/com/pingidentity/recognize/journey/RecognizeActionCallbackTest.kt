@@ -11,7 +11,6 @@ import com.pingidentity.journey.plugin.Callback
 import com.pingidentity.journey.plugin.ValueCallback
 import com.pingidentity.orchestrate.ContinueNode
 import com.pingidentity.recognize.Recognize
-import com.pingidentity.recognize.RecognizeException
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk

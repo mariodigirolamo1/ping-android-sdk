@@ -7,6 +7,7 @@
 
 package com.pingidentity.recognize
 
+import io.keyless.sdk.configurations.LogsConfiguration
 import kotlinx.serialization.Serializable
 
 /**
@@ -18,7 +19,18 @@ import kotlinx.serialization.Serializable
  *       native type.
  */
 @Serializable
-class SetupConfigDTO
+internal class SetupConfigDTO (
+    val apiKey: String,
+    val hosts: List<String>,
+    // TODO: beware of optoinal and nullables, just using for testing
+    val numberOfEnrollmentCircuits: Int? = null,
+    val withDevicePrivileges: Boolean? = null,
+    // TODO: how to handle this?
+    // val networkingModule: KLNetworkingModule?,
+    val numberOfSharedCircuits: Int? = null,
+    val keylessLogsConfiguration: LogsConfiguration? = null,
+    val customLogsConfiguration: LogsConfiguration? = null
+)
 
 /**
  * Config DTO for the Recognize SDK biometric enroll operation.
