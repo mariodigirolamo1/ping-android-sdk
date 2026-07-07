@@ -16,19 +16,19 @@ import com.pingidentity.journey.plugin.CallbackRegistry
  * [CallbackRegistry].
  *
  * Declared in AndroidManifest.xml — no explicit call needed from application code.
+ * Keyless SDK initialization is handled by [RecognizeKeylessInitializer].
  */
 class CallbackInitializer : Initializer<CallbackRegistry> {
 
     override fun create(context: Context): CallbackRegistry {
-        // TODO: confirm Journey callback type name(s) with server team; expand to multiple registrations if server sends distinct type per action
         CallbackRegistry.register(
-            "RecognizeActionCallback",
-            ::RecognizeActionCallback
+            "PingOneRecognizeCallback",
+            ::RecognizeCallback
         )
         return CallbackRegistry
     }
 
     override fun dependencies(): List<Class<out Initializer<*>>> {
-        return emptyList()
+        return listOf(RecognizeKeylessInitializer::class.java)
     }
 }

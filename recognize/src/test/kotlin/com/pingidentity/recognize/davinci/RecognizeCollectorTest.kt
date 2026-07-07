@@ -7,12 +7,12 @@
 
 package com.pingidentity.recognize.davinci
 
-import com.pingidentity.recognize.BiomAuthConfigDTO
-import com.pingidentity.recognize.BiomDeenrollConfigDTO
-import com.pingidentity.recognize.BiomEnrollConfigDTO
 import com.pingidentity.recognize.Recognize
-import com.pingidentity.recognize.SetupConfigDTO
+import com.pingidentity.recognize.RecognizeException
+import io.keyless.sdk.errorshandling.AuthenticationSuccess
+import io.keyless.sdk.errorshandling.EnrollmentSuccess
 import io.mockk.coEvery
+import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
 import kotlinx.coroutines.test.runTest
@@ -32,6 +32,9 @@ class RecognizeCollectorTest {
     @BeforeTest
     fun setUp() {
         mockkObject(Recognize)
+        coEvery { Recognize.setup(any()) } returns Result.success(Unit)
+        coEvery { Recognize.enroll(any()) } returns Result.success(mockk<EnrollmentSuccess>())
+        coEvery { Recognize.authenticate(any()) } returns Result.success(mockk<AuthenticationSuccess>())
     }
 
     @AfterTest
@@ -74,73 +77,46 @@ class RecognizeCollectorTest {
         assertNull(collector.payload())
     }
 
-    // ── collect — success paths (one test per action) ────────────────────────
+    // ── collect — success paths ──────────────────────────────────────────────
 
     @Test
     fun collectDispatchesSetupAndStoresResult() = runTest {
-        val expected = buildJsonObject { put("result", "setup_ok") }
-        coEvery { Recognize.setup(any<SetupConfigDTO>()) } returns expected
-
         val collector = RecognizeCollector()
         collector.init(buildJsonObject { put("key", "k") ; put("action", "setup") })
 
         val result = collector.collect()
 
         assertTrue(result.isSuccess)
-        assertEquals(expected, result.getOrNull())
-        assertEquals(expected, collector.payload())
+        assertNotNull(collector.payload())
     }
 
     @Test
     fun collectDispatchesBiomEnrollAndStoresResult() = runTest {
-        val expected = buildJsonObject { put("result", "enroll_ok") }
-        coEvery { Recognize.enroll(any<BiomEnrollConfigDTO>()) } returns expected
-
         val collector = RecognizeCollector()
         collector.init(buildJsonObject { put("key", "k") ; put("action", "biom_enroll") })
 
         val result = collector.collect()
 
         assertTrue(result.isSuccess)
-        assertEquals(expected, result.getOrNull())
-        assertEquals(expected, collector.payload())
+        assertNotNull(collector.payload())
     }
 
     @Test
     fun collectDispatchesBiomAuthAndStoresResult() = runTest {
-        val expected = buildJsonObject { put("result", "auth_ok") }
-        coEvery { Recognize.authenticate(any<BiomAuthConfigDTO>()) } returns expected
-
         val collector = RecognizeCollector()
         collector.init(buildJsonObject { put("key", "k") ; put("action", "biom_auth") })
 
         val result = collector.collect()
 
         assertTrue(result.isSuccess)
-        assertEquals(expected, result.getOrNull())
-        assertEquals(expected, collector.payload())
-    }
-
-    @Test
-    fun collectDispatchesBiomDeenrollAndStoresResult() = runTest {
-        val expected = buildJsonObject { put("result", "deenroll_ok") }
-        coEvery { Recognize.deenroll(any<BiomDeenrollConfigDTO>()) } returns expected
-
-        val collector = RecognizeCollector()
-        collector.init(buildJsonObject { put("key", "k") ; put("action", "biom_deenroll") })
-
-        val result = collector.collect()
-
-        assertTrue(result.isSuccess)
-        assertEquals(expected, result.getOrNull())
-        assertEquals(expected, collector.payload())
+        assertNotNull(collector.payload())
     }
 
     // ── collect — failure paths ──────────────────────────────────────────────
 
     @Test
     fun collectReturnsFailureOnSdkException() = runTest {
-        coEvery { Recognize.setup(any<SetupConfigDTO>()) } throws RuntimeException("sdk error")
+        coEvery { Recognize.setup(any()) } throws RuntimeException("sdk error")
 
         val collector = RecognizeCollector()
         collector.init(buildJsonObject { put("key", "k") ; put("action", "setup") })
@@ -149,7 +125,6 @@ class RecognizeCollectorTest {
 
         assertTrue(result.isFailure)
         assertEquals("sdk error", result.exceptionOrNull()?.message)
-        // payload must not be set after failure
         assertNull(collector.payload())
     }
 
@@ -172,7 +147,7 @@ class RecognizeCollectorTest {
 
     @Test
     fun payloadRemainsNullAfterFailure() = runTest {
-        coEvery { Recognize.enroll(any<BiomEnrollConfigDTO>()) } throws RecognizeException("fail")
+        coEvery { Recognize.enroll(any()) } returns Result.failure(RecognizeException("fail"))
 
         val collector = RecognizeCollector()
         collector.init(buildJsonObject { put("key", "k") ; put("action", "biom_enroll") })

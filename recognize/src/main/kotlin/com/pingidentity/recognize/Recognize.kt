@@ -11,39 +11,28 @@ import io.keyless.sdk.Keyless
 import io.keyless.sdk.configurations.SetupConfig
 import io.keyless.sdk.configurations.auth.BiomAuthConfig
 import io.keyless.sdk.configurations.enroll.BiomEnrollConfig
+import io.keyless.sdk.errorshandling.AuthenticationSuccess
+import io.keyless.sdk.errorshandling.EnrollmentSuccess
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.encodeToJsonElement
-import kotlinx.serialization.json.jsonObject
-import kotlin.coroutines.resumeWithException
 
 object Recognize {
     internal suspend fun setup(
-        setupConfigDTO: SetupConfigDTO
+        setupConfig: SetupConfig
     ) = suspendCancellableCoroutine { continuation ->
-        Keyless.configure(
-            // TODO: allow other params config if needed, this is just for quick tests 
-            SetupConfig(
-                apiKey = setupConfigDTO.apiKey,
-                hosts = setupConfigDTO.hosts
-            )
-        ) { result ->
+        Keyless.configure(setupConfig) { result ->
             when (result) {
                 is Keyless.KeylessResult.Success -> {
-                    continuation.resume(
-                        value = Result.success(result.value)
-                    ) { cause, _, _ ->
-                        // TODO: might handle this cause in case of cancellation
+                    continuation.resume(Result.success(result.value)) { cause, _, _ ->
+                        // The Keyless SDK has no cancellation API, so the underlying call
+                        // completes regardless. We cancel the continuation so the coroutine
+                        // reports cancellation to its caller.
+                        continuation.cancel(cause)
                     }
                 }
 
                 is Keyless.KeylessResult.Failure -> {
-                    continuation.resume(
-                        value = Result.failure(result.error)
-                    ) { cause, _, _ ->
-                        // TODO: might handle this cause in case of cancellation
+                    continuation.resume(Result.failure(result.error)) { cause, _, _ ->
+                        continuation.cancel(cause)
                     }
                 }
             }
@@ -51,93 +40,41 @@ object Recognize {
     }
 
     suspend fun enroll(
-        config: BiomEnrollConfigDTO
-    ): JsonObject = suspendCancellableCoroutine { cont ->
-        // TODO: should use incoming DTO config 
-        Keyless.enroll(
-            configuration = BiomEnrollConfig()
-        ) { result ->
+        biomEnrollConfig: BiomEnrollConfig
+    ): Result<EnrollmentSuccess> = suspendCancellableCoroutine { cont ->
+        Keyless.enroll(configuration = biomEnrollConfig) { result ->
             when(result) {
                 is Keyless.KeylessResult.Success -> {
-                    val recognizeEnrollmentResult = with(result.value) {
-                        RecognizeEnrollmentResult(
-                            keylessId = keylessId,
-                            signedJwt = signedJwt,
-                            clientState = clientState,
-                            secret = secret?.value?.rawValue,
-                            secretIDs = secretIDs.map {
-                                it.rawValue
-                            }.toSet()
-                        )
-                    }
-
-                    val jsonObjectResult = Json.encodeToJsonElement(
-                        recognizeEnrollmentResult
-                    ).jsonObject
-
-                    cont.resume(jsonObjectResult) { cause, _, _ ->
-                        // TODO: handle cancellation
+                    cont.resume(Result.success(result.value)) { cause, _, _ ->
+                        cont.cancel(cause)
                     }
                 }
                 is Keyless.KeylessResult.Failure -> {
-                    // TODO: does it need wrapper eception? 
-                    cont.resumeWithException(result.error)
+                    cont.resume(Result.failure(result.error)) { cause, _, _ ->
+                        cont.cancel(cause)
+                    }
                 }
             }
         }
     }
 
     suspend fun authenticate(
-        config: BiomAuthConfigDTO
-    ): JsonObject = suspendCancellableCoroutine { cont ->
-        Keyless.authenticate(configuration = BiomAuthConfig()) { result ->
+        config: BiomAuthConfig
+    ): Result<AuthenticationSuccess> = suspendCancellableCoroutine { cont ->
+        Keyless.authenticate(configuration = config) { result ->
             when(result) {
                 is Keyless.KeylessResult.Success -> {
-                    val recognizeAuthenticationResult = with(result.value) {
-                        RecognizeAuthenticationResult(
-                            signedJwt = signedJwt,
-                            clientState = clientState,
-                            secret = secret?.value?.rawValue,
-                            secretIDs = secretIDs.map {
-                                it.rawValue
-                            }.toSet()
-                        )
-                    }
-
-                    val jsonObjectResult = Json.encodeToJsonElement(
-                        recognizeAuthenticationResult
-                    ).jsonObject
-
-                    cont.resume(value = jsonObjectResult) { cause, _, _ ->
-                        // TODO: handle cancellation
+                    cont.resume(Result.success(result.value)) { cause, _, _ ->
+                        cont.cancel(cause)
                     }
                 }
 
                 is Keyless.KeylessResult.Failure -> {
-                    // TODO: does it need wrapper eception?
-                    cont.resumeWithException(result.error)
+                    cont.resume(Result.failure(result.error)) { cause, _, _ ->
+                        cont.cancel(cause)
+                    }
                 }
             }
-
         }
     }
 }
-
-// TODO: missing enrollment frame
-@Serializable
-data class RecognizeEnrollmentResult(
-    val keylessId: String?,
-    val signedJwt: String?,
-    val clientState: String?,
-    val secret: String?,
-    val secretIDs: Set<String>
-)
-
-// TODO: missing authentication frame
-@Serializable
-data class RecognizeAuthenticationResult(
-    val signedJwt: String?,
-    val clientState: String?,
-    val secret: String?,
-    val secretIDs: Set<String>
-)
