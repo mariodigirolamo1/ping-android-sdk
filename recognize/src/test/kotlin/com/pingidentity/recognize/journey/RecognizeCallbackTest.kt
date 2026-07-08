@@ -1,0 +1,532 @@
+/*
+ * Copyright (c) 2026 Ping Identity Corporation. All rights reserved.
+ *
+ * This software may be modified and distributed under the terms
+ * of the MIT license. See the LICENSE file for details.
+ */
+
+package com.pingidentity.recognize.journey
+
+import com.pingidentity.journey.plugin.Callback
+import com.pingidentity.journey.plugin.ValueCallback
+import com.pingidentity.orchestrate.ContinueNode
+import com.pingidentity.recognize.Recognize
+import io.keyless.sdk.errorshandling.AuthenticationSuccess
+import io.keyless.sdk.errorshandling.EnrollmentSuccess
+import io.mockk.coEvery
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.mockkObject
+import io.mockk.unmockkObject
+import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import java.io.IOException
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+
+/**
+ * Tests for [RecognizeCallback] and its concrete delegates.
+ *
+ * [RecognizeCallback.init] is a factory: it reads `operationType` from the server JSON and
+ * returns either a [PingOneRecognizeEnrollCallback] or a [PingOneRecognizeAuthenticateCallback],
+ * both fully initialised with the same [JsonObject].
+ */
+class RecognizeCallbackTest {
+
+    private val enrollSuccess: EnrollmentSuccess = mockk {
+        every { signedJwt } returns "signed-jwt"
+        every { clientState } returns "client-state"
+        every { keylessId } returns "keyless-id"
+    }
+
+    private val authSuccess: AuthenticationSuccess = mockk {
+        every { signedJwt } returns "signed-jwt"
+        every { clientState } returns "client-state"
+    }
+
+    @BeforeTest
+    fun setUp() {
+        mockkObject(Recognize)
+        coEvery { Recognize.setup(any()) } returns Result.success(Unit)
+        coEvery { Recognize.enroll(any()) } returns Result.success(enrollSuccess)
+        coEvery { Recognize.authenticate(any()) } returns Result.success(authSuccess)
+    }
+
+    @AfterTest
+    fun tearDown() {
+        unmockkObject(Recognize)
+    }
+
+    // ── Helpers ─────────────────────────────────────────────────────────────────
+
+    private fun metadataCallbackJson(operationType: String): JsonObject = Json.parseToJsonElement(
+        """
+        {
+          "type": "MetadataCallback",
+          "output": [
+            {
+              "name": "data",
+              "value": {
+                "operationType":     "$operationType",
+                "host":              "https://recognize.example.com",
+                "apiKey":            "test-api-key",
+                "transactionData":   "tx-data",
+                "clientState":       "cs",
+                "generateClientState": ""
+              }
+            }
+          ],
+          "_id": 0
+        }
+        """
+    ) as JsonObject
+
+    private data class MetadataNodeFixture(
+        val node: ContinueNode,
+        val signedJwt: ValueCallback,
+        val clientState: ValueCallback,
+        val recognizeId: ValueCallback,
+        val devicePublicSigningKey: ValueCallback,
+        val clientError: ValueCallback,
+        val errorCode: ValueCallback,
+    )
+
+    private fun makeMetadataContinueNode(): MetadataNodeFixture {
+        fun valueCallback(suffix: String): ValueCallback = object : ValueCallback {
+            override val id = "IDToken1$suffix"
+            override var value = ""
+            override fun init(jsonObject: JsonObject): Callback = this
+            override fun payload(): JsonObject = buildJsonObject {}
+        }
+        val signedJwt            = valueCallback(AbstractRecognizeCallback.SIGNED_JWT_SUFFIX)
+        val clientState          = valueCallback(AbstractRecognizeCallback.CLIENT_STATE_SUFFIX)
+        val recognizeId          = valueCallback(AbstractRecognizeCallback.RECOGNIZE_ID_SUFFIX)
+        val devicePublicSigningKey = valueCallback(AbstractRecognizeCallback.DEVICE_PUBLIC_SIGNING_KEY_SUFFIX)
+        val clientError          = valueCallback(AbstractRecognizeCallback.CLIENT_ERROR_SUFFIX)
+        val errorCode            = valueCallback(AbstractRecognizeCallback.CLIENT_ERROR_CODE_SUFFIX)
+        val node                 = mockk<ContinueNode>()
+        every { node.actions } returns listOf(signedJwt, clientState, recognizeId, devicePublicSigningKey, clientError, errorCode)
+        return MetadataNodeFixture(node, signedJwt, clientState, recognizeId, devicePublicSigningKey, clientError, errorCode)
+    }
+
+    /** Enroll input slots: signedJwt, clientState, recognizeId, clientError, clientErrorCode */
+    private fun enrollCallbackJson(): JsonObject = Json.parseToJsonElement(
+        """
+        {
+          "type": "PingOneRecognizeCallback",
+          "output": [
+            { "name": "operationType",       "value": "ENROLL" },
+            { "name": "host",                "value": "https://recognize.example.com" },
+            { "name": "apiKey",              "value": "test-api-key" },
+            { "name": "transactionData",     "value": "tx-data" },
+            { "name": "clientState",         "value": "cs" },
+            { "name": "generateClientState", "value": "" }
+          ],
+          "input": [
+            { "name": "IDToken1signedJwt",       "value": "" },
+            { "name": "IDToken1clientState",     "value": "" },
+            { "name": "IDToken1recognizeId",     "value": "" },
+            { "name": "IDToken1clientError",     "value": "" },
+            { "name": "IDToken1clientErrorCode", "value": "" }
+          ]
+        }
+        """
+    ) as JsonObject
+
+    /** Auth input slots: signedJwt, clientState, recognizeId (empty), devicePublicSigningKey, clientError, clientErrorCode */
+    private fun authCallbackJson(): JsonObject = Json.parseToJsonElement(
+        """
+        {
+          "type": "PingOneRecognizeCallback",
+          "output": [
+            { "name": "operationType",       "value": "AUTHENTICATE" },
+            { "name": "host",                "value": "https://recognize.example.com" },
+            { "name": "apiKey",              "value": "test-api-key" },
+            { "name": "transactionData",     "value": "tx-data" },
+            { "name": "clientState",         "value": "cs" },
+            { "name": "generateClientState", "value": "" }
+          ],
+          "input": [
+            { "name": "IDToken1signedJwt",              "value": "" },
+            { "name": "IDToken1clientState",            "value": "" },
+            { "name": "IDToken1recognizeId",            "value": "" },
+            { "name": "IDToken1devicePublicSigningKey", "value": "" },
+            { "name": "IDToken1clientError",            "value": "" },
+            { "name": "IDToken1clientErrorCode",        "value": "" }
+          ]
+        }
+        """
+    ) as JsonObject
+
+    // ── Factory dispatch ─────────────────────────────────────────────────────────
+
+    @Test
+    fun `ENROLL operationType returns PingOneRecognizeEnrollCallback`() {
+        val result = RecognizeCallback().init(enrollCallbackJson())
+        assertIs<PingOneRecognizeEnrollCallback>(result)
+    }
+
+    @Test
+    fun `AUTHENTICATE operationType returns PingOneRecognizeAuthenticateCallback`() {
+        val result = RecognizeCallback().init(authCallbackJson())
+        assertIs<PingOneRecognizeAuthenticateCallback>(result)
+    }
+
+    @Test
+    fun `unknown operationType throws IllegalArgumentException`() {
+        val json = Json.parseToJsonElement(
+            """{ "type": "PingOneRecognizeCallback", "output": [{ "name": "operationType", "value": "UNKNOWN" }], "input": [] }"""
+        ) as JsonObject
+        val ex = runCatching { RecognizeCallback().init(json) }.exceptionOrNull()
+        assertIs<IllegalArgumentException>(ex)
+    }
+
+    @Test
+    fun `missing operationType throws IllegalArgumentException`() {
+        val json = Json.parseToJsonElement(
+            """{ "type": "PingOneRecognizeCallback", "output": [], "input": [] }"""
+        ) as JsonObject
+        val ex = runCatching { RecognizeCallback().init(json) }.exceptionOrNull()
+        assertIs<IllegalArgumentException>(ex)
+    }
+
+    // ── generateClientState mapping ──────────────────────────────────────────────
+
+    @Test
+    fun `generateClientState true maps to ClientStateType BACKUP for enroll`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType",       "value": "ENROLL" },
+                { "name": "host",                "value": "h" },
+                { "name": "apiKey",              "value": "k" },
+                { "name": "generateClientState", "value": "true" }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",       "value": "" },
+                { "name": "IDToken1clientState",     "value": "" },
+                { "name": "IDToken1recognizeId",     "value": "" },
+                { "name": "IDToken1clientError",     "value": "" },
+                { "name": "IDToken1clientErrorCode", "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeEnrollCallback
+        // enroll() should succeed without throwing — BACKUP is a valid ClientStateType
+        assertTrue(callback.enroll().isSuccess)
+    }
+
+    @Test
+    fun `generateClientState true maps to ClientStateType BACKUP for auth`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType",       "value": "AUTHENTICATE" },
+                { "name": "host",                "value": "h" },
+                { "name": "apiKey",              "value": "k" },
+                { "name": "generateClientState", "value": "true" }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",              "value": "" },
+                { "name": "IDToken1clientState",            "value": "" },
+                { "name": "IDToken1recognizeId",            "value": "" },
+                { "name": "IDToken1devicePublicSigningKey", "value": "" },
+                { "name": "IDToken1clientError",            "value": "" },
+                { "name": "IDToken1clientErrorCode",        "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeAuthenticateCallback
+        assertTrue(callback.authenticate().isSuccess)
+    }
+
+    // ── Enroll — success path ────────────────────────────────────────────────────
+
+    @Test
+    fun `enroll success writes signedJwt and recognizeId to input`() = runTest {
+        val callback = RecognizeCallback().init(enrollCallbackJson()) as PingOneRecognizeEnrollCallback
+        val result = callback.enroll()
+        assertTrue(result.isSuccess)
+
+        val inputs = callback.payload()["input"]!!.jsonArray
+        assertEquals("signed-jwt",  inputs[0].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("client-state",inputs[1].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("keyless-id",  inputs[2].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("",            inputs[3].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("",            inputs[4].jsonObject["value"]!!.jsonPrimitive.content)
+    }
+
+    // ── Enroll — failure path ────────────────────────────────────────────────────
+
+    @Test
+    fun `enroll failure from Recognize_enroll writes error to input`() = runTest {
+        val error = IOException("enroll failed")
+        coEvery { Recognize.enroll(any()) } returns Result.failure(error)
+
+        val callback = RecognizeCallback().init(enrollCallbackJson()) as PingOneRecognizeEnrollCallback
+        val result = callback.enroll()
+        assertTrue(result.isFailure)
+        assertEquals(error, result.exceptionOrNull())
+
+        val inputs = callback.payload()["input"]!!.jsonArray
+        assertEquals("", inputs[0].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("", inputs[1].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("", inputs[2].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("enroll failed", inputs[3].jsonObject["value"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `enroll failure from Recognize_setup writes error to input`() = runTest {
+        val error = IOException("setup failed")
+        coEvery { Recognize.setup(any()) } returns Result.failure(error)
+
+        val callback = RecognizeCallback().init(enrollCallbackJson()) as PingOneRecognizeEnrollCallback
+        val result = callback.enroll()
+        assertTrue(result.isFailure)
+        assertEquals(error, result.exceptionOrNull())
+
+        val inputs = callback.payload()["input"]!!.jsonArray
+        assertEquals("setup failed", inputs[3].jsonObject["value"]!!.jsonPrimitive.content)
+    }
+
+    // ── Authenticate — success path ──────────────────────────────────────────────
+
+    @Test
+    fun `authenticate success writes signedJwt and clientState to input`() = runTest {
+        val callback = RecognizeCallback().init(authCallbackJson()) as PingOneRecognizeAuthenticateCallback
+        val result = callback.authenticate()
+        assertTrue(result.isSuccess)
+
+        val inputs = callback.payload()["input"]!!.jsonArray
+        assertEquals("signed-jwt",   inputs[0].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("client-state", inputs[1].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("",             inputs[2].jsonObject["value"]!!.jsonPrimitive.content) // recognizeId empty for auth
+        assertEquals("",             inputs[3].jsonObject["value"]!!.jsonPrimitive.content) // devicePublicSigningKey
+        assertEquals("",             inputs[4].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("",             inputs[5].jsonObject["value"]!!.jsonPrimitive.content)
+    }
+
+    // ── Authenticate — failure path ──────────────────────────────────────────────
+
+    @Test
+    fun `authenticate failure from Recognize_authenticate writes error to input`() = runTest {
+        val error = IOException("auth failed")
+        coEvery { Recognize.authenticate(any()) } returns Result.failure(error)
+
+        val callback = RecognizeCallback().init(authCallbackJson()) as PingOneRecognizeAuthenticateCallback
+        val result = callback.authenticate()
+        assertTrue(result.isFailure)
+        assertEquals(error, result.exceptionOrNull())
+
+        val inputs = callback.payload()["input"]!!.jsonArray
+        assertEquals("", inputs[0].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("", inputs[1].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("", inputs[2].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("", inputs[3].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("auth failed", inputs[4].jsonObject["value"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `authenticate failure from Recognize_setup writes error to input`() = runTest {
+        val error = IOException("setup failed")
+        coEvery { Recognize.setup(any()) } returns Result.failure(error)
+
+        val callback = RecognizeCallback().init(authCallbackJson()) as PingOneRecognizeAuthenticateCallback
+        val result = callback.authenticate()
+        assertTrue(result.isFailure)
+
+        val inputs = callback.payload()["input"]!!.jsonArray
+        assertEquals("setup failed", inputs[4].jsonObject["value"]!!.jsonPrimitive.content)
+    }
+
+    // ── Common fields parsed by AbstractRecognizeCallback ───────────────────────
+
+    @Test
+    fun `common output fields are parsed into callback properties`() {
+        val callback = RecognizeCallback().init(enrollCallbackJson()) as PingOneRecognizeEnrollCallback
+        assertEquals("https://recognize.example.com", callback.host)
+        assertEquals("test-api-key", callback.apiKey)
+        assertEquals("tx-data", callback.transactionData)
+        assertEquals("cs", callback.clientState)
+    }
+
+    // ── mobileSDKOptions — auth-specific fields ──────────────────────────────────
+
+    @Test
+    fun `auth reads presentationStyle from mobileSDKOptions key presentationStyle`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType", "value": "AUTHENTICATE" },
+                { "name": "host",          "value": "h" },
+                { "name": "apiKey",        "value": "k" },
+                { "name": "mobileSDKOptions", "value": { "presentationStyle": "NO_CAMERA_PREVIEW" } }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",              "value": "" },
+                { "name": "IDToken1clientState",            "value": "" },
+                { "name": "IDToken1recognizeId",            "value": "" },
+                { "name": "IDToken1devicePublicSigningKey", "value": "" },
+                { "name": "IDToken1clientError",            "value": "" },
+                { "name": "IDToken1clientErrorCode",        "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        // Should succeed — NO_CAMERA_PREVIEW is valid; the old bug would silently ignore it
+        // (it was reading key "presentation" instead of "presentationStyle")
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeAuthenticateCallback
+        assertTrue(callback.authenticate().isSuccess)
+    }
+
+    @Test
+    fun `auth reads shouldRetriveAuthenticationFrame from typo key`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType", "value": "AUTHENTICATE" },
+                { "name": "host",          "value": "h" },
+                { "name": "apiKey",        "value": "k" },
+                { "name": "mobileSDKOptions", "value": {
+                    "shouldRetriveAuthenticationFrame": "true"
+                  }
+                }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",              "value": "" },
+                { "name": "IDToken1clientState",            "value": "" },
+                { "name": "IDToken1recognizeId",            "value": "" },
+                { "name": "IDToken1devicePublicSigningKey", "value": "" },
+                { "name": "IDToken1clientError",            "value": "" },
+                { "name": "IDToken1clientErrorCode",        "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeAuthenticateCallback
+        assertTrue(callback.authenticate().isSuccess)
+    }
+
+    // ── mobileSDKOptions — enroll-specific fields ────────────────────────────────
+
+    @Test
+    fun `enroll reads numberOfEnrollmentCircuits from mobileSDKOptions`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType", "value": "ENROLL" },
+                { "name": "host",          "value": "h" },
+                { "name": "apiKey",        "value": "k" },
+                { "name": "mobileSDKOptions", "value": { "numberOfEnrollmentCircuits": "3" } }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",       "value": "" },
+                { "name": "IDToken1clientState",     "value": "" },
+                { "name": "IDToken1recognizeId",     "value": "" },
+                { "name": "IDToken1clientError",     "value": "" },
+                { "name": "IDToken1clientErrorCode", "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeEnrollCallback
+        assertTrue(callback.enroll().isSuccess)
+    }
+
+    // ── MetadataCallback mode — operationType from data object ───────────────────
+
+    @Test
+    fun `MetadataCallback ENROLL dispatches to PingOneRecognizeEnrollCallback`() {
+        val result = RecognizeCallback().init(metadataCallbackJson("ENROLL"))
+        assertIs<PingOneRecognizeEnrollCallback>(result)
+    }
+
+    @Test
+    fun `MetadataCallback AUTHENTICATE dispatches to PingOneRecognizeAuthenticateCallback`() {
+        val result = RecognizeCallback().init(metadataCallbackJson("AUTHENTICATE"))
+        assertIs<PingOneRecognizeAuthenticateCallback>(result)
+    }
+
+    @Test
+    fun `MetadataCallback enroll success writes to sibling ValueCallbacks`() = runTest {
+        val f = makeMetadataContinueNode()
+        val callback = (RecognizeCallback().init(metadataCallbackJson("ENROLL")) as PingOneRecognizeEnrollCallback)
+            .also { it.continueNode = f.node }
+
+        assertTrue(callback.enroll().isSuccess)
+        assertEquals("signed-jwt",   f.signedJwt.value)
+        assertEquals("client-state", f.clientState.value)
+        assertEquals("keyless-id",   f.recognizeId.value)
+        assertEquals("",             f.clientError.value)
+        assertEquals("",             f.errorCode.value)
+    }
+
+    @Test
+    fun `MetadataCallback enroll failure writes error to sibling clientError ValueCallback`() = runTest {
+        val error = IOException("enroll failed")
+        coEvery { Recognize.enroll(any()) } returns Result.failure(error)
+
+        val f = makeMetadataContinueNode()
+        val callback = (RecognizeCallback().init(metadataCallbackJson("ENROLL")) as PingOneRecognizeEnrollCallback)
+            .also { it.continueNode = f.node }
+
+        assertTrue(callback.enroll().isFailure)
+        assertEquals("",              f.signedJwt.value)
+        assertEquals("",              f.clientState.value)
+        assertEquals("",              f.recognizeId.value)
+        assertEquals("enroll failed", f.clientError.value)
+    }
+
+    @Test
+    fun `MetadataCallback authenticate success writes to sibling ValueCallbacks`() = runTest {
+        val f = makeMetadataContinueNode()
+        val callback = (RecognizeCallback().init(metadataCallbackJson("AUTHENTICATE")) as PingOneRecognizeAuthenticateCallback)
+            .also { it.continueNode = f.node }
+
+        assertTrue(callback.authenticate().isSuccess)
+        assertEquals("signed-jwt",   f.signedJwt.value)
+        assertEquals("client-state", f.clientState.value)
+        assertEquals("",             f.recognizeId.value) // no recognizeId for auth
+        assertEquals("",             f.devicePublicSigningKey.value)
+        assertEquals("",             f.clientError.value)
+        assertEquals("",             f.errorCode.value)
+    }
+
+    @Test
+    fun `MetadataCallback authenticate failure writes error to sibling clientError ValueCallback`() = runTest {
+        val error = IOException("auth failed")
+        coEvery { Recognize.authenticate(any()) } returns Result.failure(error)
+
+        val f = makeMetadataContinueNode()
+        val callback = (RecognizeCallback().init(metadataCallbackJson("AUTHENTICATE")) as PingOneRecognizeAuthenticateCallback)
+            .also { it.continueNode = f.node }
+
+        assertTrue(callback.authenticate().isFailure)
+        assertEquals("",            f.signedJwt.value)
+        assertEquals("",            f.clientState.value)
+        assertEquals("",            f.recognizeId.value)
+        assertEquals("",            f.devicePublicSigningKey.value)
+        assertEquals("auth failed", f.clientError.value)
+    }
+}

@@ -7,23 +7,27 @@
 
 package com.pingidentity.recognize
 
+import io.keyless.sdk.configurations.SetupConfig
+import io.keyless.sdk.configurations.auth.BiomAuthConfig
+import io.keyless.sdk.configurations.enroll.BiomEnrollConfig
+import io.keyless.sdk.errorshandling.AuthenticationSuccess
+import io.keyless.sdk.errorshandling.EnrollmentSuccess
 import io.mockk.coEvery
+import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
-import kotlin.test.assertNotNull
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class RecognizeTest {
 
     @BeforeTest
     fun setUp() {
-        Recognize.reset()
+        mockkObject(Recognize)
     }
 
     @AfterTest
@@ -32,104 +36,61 @@ class RecognizeTest {
     }
 
     @Test
-    fun configDslIsCallableWithoutCrash() {
-        // Verifies the config {} DSL accepts a block and does not throw.
-        Recognize.config {
-            // TODO: assert specific fields once RecognizeConfig carries them
-        }
-        // Access private field via reflection to verify the config was applied.
-        val config = Recognize::class.java
-            .getDeclaredField("recognizeConfig")
-            .apply { isAccessible = true }
-            .get(Recognize)
-        assertNotNull(config, "recognizeConfig should be set after calling Recognize.config {}")
-    }
-
-    @Test
-    fun resetIsCallableWithoutCrash() {
-        // Smoke-test: reset() must not throw even before config() is called.
-        Recognize.reset()
-    }
-
-    @Test
-    fun resetAfterConfigIsCallableWithoutCrash() {
-        Recognize.config { }
-        Recognize.reset()
-    }
-
-    @Test
     fun setupIsMockableViaMockkObject() = runTest {
-        val expected: JsonObject = buildJsonObject { put("result", "setup_ok") }
-        mockkObject(Recognize)
-        coEvery { Recognize.setup(any()) } returns expected
+        val expected = Result.success(Unit)
+        coEvery { Recognize.setup(any<SetupConfig>()) } returns expected
 
-        val result = Recognize.setup(SetupConfigDTO())
-        assert(result == expected) { "setup() should return the mocked value" }
+        val result = Recognize.setup(SetupConfig(apiKey = "k", hosts = emptyList()))
+        assertEquals(expected, result)
     }
 
     @Test
     fun enrollIsMockableViaMockkObject() = runTest {
-        val expected: JsonObject = buildJsonObject { put("result", "enroll_ok") }
-        mockkObject(Recognize)
-        coEvery { Recognize.enroll(any()) } returns expected
+        val successValue = mockk<EnrollmentSuccess>()
+        val expected = Result.success(successValue)
+        coEvery { Recognize.enroll(any<BiomEnrollConfig>()) } returns expected
 
-        val result = Recognize.enroll(BiomEnrollConfigDTO())
-        assert(result == expected) { "enroll() should return the mocked value" }
+        val result = Recognize.enroll(BiomEnrollConfig())
+        assertEquals(expected, result)
     }
 
     @Test
     fun authenticateIsMockableViaMockkObject() = runTest {
-        val expected: JsonObject = buildJsonObject { put("result", "authenticate_ok") }
-        mockkObject(Recognize)
-        coEvery { Recognize.authenticate(any()) } returns expected
+        val successValue = mockk<AuthenticationSuccess>()
+        val expected = Result.success(successValue)
+        coEvery { Recognize.authenticate(any<BiomAuthConfig>()) } returns expected
 
-        val result = Recognize.authenticate(BiomAuthConfigDTO())
-        assert(result == expected) { "authenticate() should return the mocked value" }
+        val result = Recognize.authenticate(BiomAuthConfig())
+        assertEquals(expected, result)
     }
 
     @Test
-    fun deenrollIsMockableViaMockkObject() = runTest {
-        val expected: JsonObject = buildJsonObject { put("result", "deenroll_ok") }
-        mockkObject(Recognize)
-        coEvery { Recognize.deenroll(any()) } returns expected
+    fun setupPropagatesFailure() = runTest {
+        val error = RuntimeException("setup failed")
+        coEvery { Recognize.setup(any()) } returns Result.failure(error)
 
-        val result = Recognize.deenroll(BiomDeenrollConfigDTO())
-        assert(result == expected) { "deenroll() should return the mocked value" }
+        val result = Recognize.setup(SetupConfig(apiKey = "k", hosts = emptyList()))
+        assertTrue(result.isFailure)
+        assertEquals(error, result.exceptionOrNull())
     }
 
     @Test
-    fun setupThrowsNotImplementedErrorWhenSdkNotWiredIn() = runTest {
-        val exception = runCatching { Recognize.setup(SetupConfigDTO()) }.exceptionOrNull()
-        assertNotNull(exception, "setup() should throw when SDK is not wired in")
-        assert(exception is NotImplementedError) {
-            "Expected NotImplementedError from TODO stub, got ${exception?.javaClass?.name}"
-        }
+    fun enrollPropagatesFailure() = runTest {
+        val error = RuntimeException("enroll failed")
+        coEvery { Recognize.enroll(any()) } returns Result.failure(error)
+
+        val result = Recognize.enroll(BiomEnrollConfig())
+        assertTrue(result.isFailure)
+        assertEquals(error, result.exceptionOrNull())
     }
 
     @Test
-    fun enrollThrowsNotImplementedErrorWhenSdkNotWiredIn() = runTest {
-        val exception = runCatching { Recognize.enroll(BiomEnrollConfigDTO()) }.exceptionOrNull()
-        assertNotNull(exception, "enroll() should throw when SDK is not wired in")
-        assert(exception is NotImplementedError) {
-            "Expected NotImplementedError from TODO stub, got ${exception?.javaClass?.name}"
-        }
-    }
+    fun authenticatePropagatesFailure() = runTest {
+        val error = RuntimeException("auth failed")
+        coEvery { Recognize.authenticate(any()) } returns Result.failure(error)
 
-    @Test
-    fun authenticateThrowsNotImplementedErrorWhenSdkNotWiredIn() = runTest {
-        val exception = runCatching { Recognize.authenticate(BiomAuthConfigDTO()) }.exceptionOrNull()
-        assertNotNull(exception, "authenticate() should throw when SDK is not wired in")
-        assert(exception is NotImplementedError) {
-            "Expected NotImplementedError from TODO stub, got ${exception?.javaClass?.name}"
-        }
-    }
-
-    @Test
-    fun deenrollThrowsNotImplementedErrorWhenSdkNotWiredIn() = runTest {
-        val exception = runCatching { Recognize.deenroll(BiomDeenrollConfigDTO()) }.exceptionOrNull()
-        assertNotNull(exception, "deenroll() should throw when SDK is not wired in")
-        assert(exception is NotImplementedError) {
-            "Expected NotImplementedError from TODO stub, got ${exception?.javaClass?.name}"
-        }
+        val result = Recognize.authenticate(BiomAuthConfig())
+        assertTrue(result.isFailure)
+        assertEquals(error, result.exceptionOrNull())
     }
 }

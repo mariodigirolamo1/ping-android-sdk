@@ -13,6 +13,7 @@ import com.pingidentity.journey.plugin.ValueCallback
 import com.pingidentity.journey.plugin.callbacks
 import com.pingidentity.orchestrate.ContinueNode
 import com.pingidentity.orchestrate.ContinueNodeAware
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
@@ -20,29 +21,68 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * ID suffix used to locate the signal [ValueCallback] in the sibling callback list.
- *
- * TODO: confirm the exact field name(s) the Recognize server node uses (analogous to
- *       `pingone_risk_evaluation_signals` in Protect).
- */
-const val RECOGNIZE_SIGNALS = "recognize_signals"
-
-/** ID suffix used to locate the client-error [ValueCallback]. */
-const val CLIENT_ERROR = "clientError"
-
-/**
  * Abstract base for Recognize Journey callbacks.
  *
  * Handles the dual-mode nature of Recognize callbacks: they can arrive either as first-class
- * typed callbacks (e.g. `RecognizeInitializeCallback`) or wrapped inside a `MetadataCallback`
- * — mirroring the [AbstractProtectCallback] pattern exactly.
+ * typed callbacks (e.g. `PingOneRecognizeCallback`) or wrapped inside a `MetadataCallback`.
  *
  * Subclasses override [init] to parse their specific JSON fields and expose typed properties.
  */
 abstract class AbstractRecognizeCallback : ContinueNodeAware, AbstractCallback() {
 
     override lateinit var continueNode: ContinueNode
-    private var derivedCallback: Boolean = false
+    protected var derivedCallback: Boolean = false
+
+    // ── Common output fields ──────────────────────────────────────────────────
+
+    /** URL of the PingOne Recognize authentication service WebSocket. */
+    var websocketURL: String = ""
+        private set
+
+    /** Customer / tenant name configured on the server. */
+    var customerName: String = ""
+        private set
+
+    /** RSA public key used to encrypt images before transmission. */
+    var imageEncryptionPublicKey: String = ""
+        private set
+
+    /** Key ID that corresponds to [imageEncryptionPublicKey]. */
+    var imageEncryptionKeyId: String = ""
+        private set
+
+    /** PingOne Recognize node host URL. */
+    var host: String = ""
+        private set
+
+    /** API key for the Keyless / Recognize SDK. */
+    var apiKey: String = ""
+        private set
+
+    /** Username of the subject. */
+    var username: String = ""
+        private set
+
+    /** Opaque transaction data to be signed by the SDK. */
+    var transactionData: String = ""
+        private set
+
+    /** Indicates whether the SDK should generate a new client state. */
+    var generateClientState: String = ""
+        private set
+
+    /** Existing client state payload supplied by the server. */
+    var clientState: String = ""
+        private set
+
+    /**
+     * Options forwarded to the PingOne Recognize **mobile** SDK.
+     *
+     * Relevant keys include `livenessConfiguration`, `operationInfoId`,
+     * `operationInfoPayload`, `customSecret`, `presentation`, etc.
+     */
+    var mobileSDKOptions: JsonObject = JsonObject(emptyMap())
+        private set
 
     override fun init(jsonObject: JsonObject): Callback {
         val type = jsonObject["type"]?.jsonPrimitive?.content
@@ -64,42 +104,46 @@ abstract class AbstractRecognizeCallback : ContinueNodeAware, AbstractCallback()
     }
 
     /**
-     * Submits a client-side error string to the server.
+     * Parses a single named output field and stores it in the corresponding property.
      *
-     * @param value Error description / error-type token.
-     */
-    fun error(value: String) {
-        if (derivedCallback) valueCallbackError(value) else input(value)
-    }
-
-    /**
-     * Submits the recognition signal (and optionally an error) to the server.
+     * Called once per field in the server JSON output array (or per key in the `data` envelope).
+     * Subclasses may override this and call `super.init(name, value)` to handle any
+     * operation-specific fields in addition to these common ones.
      *
-     * @param signal The JWS / signal payload returned by the Recognize SDK.
-     * @param error  An error string; empty if no error occurred.
+     * @param name Field name as returned by the server (e.g. `"transactionData"`).
+     * @param value Raw JSON element for the field value.
      */
-    fun signal(signal: String, error: String) {
-        if (derivedCallback) {
-            if (signal.isNotEmpty()) valueCallbackSignal(signal)
-            if (error.isNotEmpty()) valueCallbackError(error)
-        } else {
-            input(signal, error)
+    override fun init(name: String, value: JsonElement) {
+        when (name) {
+            "websocketURL" -> websocketURL = value.jsonPrimitive.content
+            "customerName" -> customerName = value.jsonPrimitive.content
+            "imageEncryptionPublicKey" -> imageEncryptionPublicKey = value.jsonPrimitive.content
+            "imageEncryptionKeyId" -> imageEncryptionKeyId = value.jsonPrimitive.content
+            "host" -> host = value.jsonPrimitive.content
+            "apiKey" -> apiKey = value.jsonPrimitive.content
+            "username" -> username = value.jsonPrimitive.content
+            "transactionData" -> transactionData = value.jsonPrimitive.content
+            "generateClientState" -> generateClientState = value.jsonPrimitive.content
+            "clientState" -> clientState = value.jsonPrimitive.content
+            "mobileSDKOptions" -> if (value is JsonObject) mobileSDKOptions = value
+            else -> {}
         }
     }
 
-    private fun valueCallbackSignal(value: String) {
+    protected fun setValueCallback(idSuffix: String, value: String) {
         continueNode.callbacks.forEach { callback ->
-            if (callback is ValueCallback && callback.id.contains(RECOGNIZE_SIGNALS)) {
+            if (callback is ValueCallback && callback.id.contains(idSuffix)) {
                 callback.value = value
             }
         }
     }
 
-    private fun valueCallbackError(value: String) {
-        continueNode.callbacks.forEach { callback ->
-            if (callback is ValueCallback && callback.id.contains(CLIENT_ERROR)) {
-                callback.value = value
-            }
-        }
+    internal companion object {
+        const val SIGNED_JWT_SUFFIX = "signedJwt"
+        const val CLIENT_STATE_SUFFIX = "clientState"
+        const val RECOGNIZE_ID_SUFFIX = "recognizeId"
+        const val DEVICE_PUBLIC_SIGNING_KEY_SUFFIX = "devicePublicSigningKey"
+        const val CLIENT_ERROR_SUFFIX = "clientError"
+        const val CLIENT_ERROR_CODE_SUFFIX = "clientErrorCode"
     }
 }

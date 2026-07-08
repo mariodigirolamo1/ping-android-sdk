@@ -1,4 +1,7 @@
 ## [Unreleased]
+#### Added
+- Added new `recognize` module with Journey support for PingOne Recognize biometric enrollment (`PingOneRecognizeEnrollCallback`) and authentication (`PingOneRecognizeAuthenticateCallback`) [MOB-3655]
+
 #### Fixed
 - Fixed OATH and Push URI parsers to propagate typed `InvalidUriException` for structural URI parse errors [SDKS-5074]
 

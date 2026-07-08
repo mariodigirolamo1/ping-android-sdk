@@ -8,11 +8,11 @@
 package com.pingidentity.recognize.davinci
 
 import com.pingidentity.davinci.plugin.Collector
-import com.pingidentity.recognize.BiomAuthConfigDTO
-import com.pingidentity.recognize.BiomDeenrollConfigDTO
-import com.pingidentity.recognize.BiomEnrollConfigDTO
 import com.pingidentity.recognize.Recognize
-import com.pingidentity.recognize.SetupConfigDTO
+import com.pingidentity.recognize.RecognizeException
+import io.keyless.sdk.configurations.SetupConfig
+import io.keyless.sdk.configurations.auth.BiomAuthConfig
+import io.keyless.sdk.configurations.enroll.BiomEnrollConfig
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.JsonObject
@@ -89,32 +89,33 @@ class RecognizeCollector : Collector<JsonObject> {
     suspend fun collect(): Result<JsonObject> {
         return try {
             // TODO: confirm action discriminator values with server team
-            val sdkResult = when (action) {
+            val sdkResult: Result<*> = when (action) {
                 "setup" ->
-                    // TODO: construct SetupConfigDTO from fields decoded in init() once server contract confirmed
-                    // TODO: to collect a result an input must come from the serve all in one cycle.
-                    //  let's understand if this class makes sense.
-                    // TODO: probably will only have auth and enroll with complex input
-                    // TODO: just using this for testing
+                    // TODO: construct SetupConfig from fields decoded in init() once server contract confirmed
                     Recognize.setup(
-                        SetupConfigDTO(
+                        SetupConfig(
                             apiKey = "",
                             hosts = emptyList()
                         )
                     )
                 "biom_enroll" ->
-                    // TODO: construct BiomEnrollConfigDTO from fields decoded in init() once server contract confirmed
-                    Recognize.enroll(BiomEnrollConfigDTO())
+                    // TODO: construct BiomEnrollConfig from fields decoded in init() once server contract confirmed
+                    Recognize.enroll(BiomEnrollConfig())
                 "biom_auth" ->
-                    // TODO: construct BiomAuthConfigDTO from fields decoded in init() once server contract confirmed
-                    Recognize.authenticate(BiomAuthConfigDTO())
-                // TODO: strange else branch?
-                else -> return Result.failure(Exception("Unknown action: $action"))
+                    // TODO: construct BiomAuthConfig from fields decoded in init() once server contract confirmed
+                    Recognize.authenticate(BiomAuthConfig())
+                else -> return Result.failure(RecognizeException("Unknown action: $action"))
             }
-            // TODO: here there needs to be a conversion from sdk result to a json.
-            //  we might have a serializble/deserializable class for the Recognize Wrapper.
-            //  so here we must consume the sdkResult above
-            Result.success( buildJsonObject {  })
+
+            if (sdkResult.isFailure) {
+                return Result.failure(sdkResult.exceptionOrNull()!!)
+            }
+
+            // TODO: convert the SDK result to a proper JsonObject representation once the
+            //       server JSON contract is confirmed for each action.
+            val payload = buildJsonObject {}
+            result = payload
+            Result.success(payload)
         } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
             Result.failure(exception = e)

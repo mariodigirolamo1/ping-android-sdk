@@ -18,14 +18,14 @@ import kotlin.test.assertSame
 class CallbackInitializerTest {
 
     @Test
-    fun `create registers RecognizeActionCallback and returns registry`() {
+    fun `create registers PingOneRecognizeCallback and returns registry`() {
         val context = mockk<Context>(relaxed = true)
 
         val initializer = CallbackInitializer()
         val result = initializer.create(context)
 
         assertSame(CallbackRegistry, result)
-        assertNotNull(CallbackRegistry.callbacks()["RecognizeActionCallback"])
+        assertNotNull(CallbackRegistry.callbacks()["PingOneRecognizeCallback"])
     }
 
     @Test
@@ -34,6 +34,7 @@ class CallbackInitializerTest {
 
         CallbackInitializer().create(context)
 
+        assertNull(CallbackRegistry.callbacks()["RecognizeActionCallback"])
         assertNull(CallbackRegistry.callbacks()["RecognizeInitializeCallback"])
         assertNull(CallbackRegistry.callbacks()["RecognizeDataCollectionCallback"])
     }
