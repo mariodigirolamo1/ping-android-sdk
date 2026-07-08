@@ -125,14 +125,15 @@ class RecognizeEnrollCollector : AbstractRecognizeCollector() {
                 )
                 .fold(
                     onSuccess = { success ->
-                        result = buildJsonObject {
+                        val payload = buildJsonObject {
                             put("signedJwt", success.signedJwt ?: "")
                             put("clientState", success.clientState ?: "")
                             put("recognizeId", success.keylessId)
                             put("clientError", "")
                             put("clientErrorCode", "")
                         }
-                        Result.success(result!!)
+                        result = payload
+                        Result.success(payload)
                     },
                     onFailure = { error ->
                         result = buildJsonObject {
