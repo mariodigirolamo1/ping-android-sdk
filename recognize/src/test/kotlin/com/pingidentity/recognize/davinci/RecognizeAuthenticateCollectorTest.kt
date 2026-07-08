@@ -192,6 +192,15 @@ class RecognizeAuthenticateCollectorTest {
         assertTrue(collector.collect().isSuccess)
     }
 
+    @Test
+    fun `generateClientState false or empty maps to null for auth`() = runTest {
+        val inputFalse = authInput(generateClientState = "false")
+        val inputEmpty = authInput(generateClientState = "")
+
+        assertTrue(RecognizeAuthenticateCollector().apply { init(inputFalse) }.collect().isSuccess)
+        assertTrue(RecognizeAuthenticateCollector().apply { init(inputEmpty) }.collect().isSuccess)
+    }
+
     // ── mobileSDKOptions — auth-specific field regression tests ──────────────────
 
     @Test

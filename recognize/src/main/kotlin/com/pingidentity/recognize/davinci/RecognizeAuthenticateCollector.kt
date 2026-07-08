@@ -87,9 +87,9 @@ class RecognizeAuthenticateCollector : AbstractRecognizeCollector() {
             val opExternalUserId = opts["operationInfoExternalUserId"]?.jsonPrimitive?.contentOrNull
             val operationInfo = if (opId != null || opPayload != null || opExternalUserId != null) {
                 OperationInfo(
-                    opId ?: "",
-                    opPayload ?: "",
-                    opExternalUserId ?: "",
+                    operationId = opId ?: "",
+                    payload = opPayload ?: "",
+                    externalUserId = opExternalUserId ?: "",
                 )
             } else null
 
