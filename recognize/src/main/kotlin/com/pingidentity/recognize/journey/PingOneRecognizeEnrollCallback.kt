@@ -85,9 +85,16 @@ class PingOneRecognizeEnrollCallback : AbstractRecognizeCallback() {
             ClientStateType.BACKUP
         } else null
 
+        val storedAudience = audience
+        val jwtSigningInfo = if (storedAudience.isNotBlank()) {
+            JwtSigningInfo(claimTransactionData = storedTransactionData, audience = storedAudience)
+        } else {
+            JwtSigningInfo(claimTransactionData = storedTransactionData)
+        }
+
         var biomEnrollConfig = BiomEnrollConfig(
             operationInfo = operationInfo,
-            jwtSigningInfo = JwtSigningInfo(claimTransactionData = storedTransactionData),
+            jwtSigningInfo = jwtSigningInfo,
             generatingClientState = storedGeneratingClientState,
             clientState = storedClientState.takeIf { it.isNotEmpty() },
         )
@@ -150,7 +157,9 @@ class PingOneRecognizeEnrollCallback : AbstractRecognizeCallback() {
             setValueCallback(CLIENT_ERROR_SUFFIX, clientError)
             setValueCallback(CLIENT_ERROR_CODE_SUFFIX, clientErrorCode)
         } else {
-            input(signedJwt, clientState, recognizeId, clientError, clientErrorCode)
+            // Input order matches server fields: signedJwt, clientState, recognizeId,
+            // devicePublicSigningKey (always empty for enroll), clientError
+            input(signedJwt, clientState, recognizeId, "", clientError)
         }
     }
 }
