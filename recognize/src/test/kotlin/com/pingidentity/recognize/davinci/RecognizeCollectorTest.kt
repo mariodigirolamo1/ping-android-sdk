@@ -8,33 +8,29 @@
 package com.pingidentity.recognize.davinci
 
 import com.pingidentity.recognize.Recognize
-import com.pingidentity.recognize.RecognizeException
-import io.keyless.sdk.errorshandling.AuthenticationSuccess
-import io.keyless.sdk.errorshandling.EnrollmentSuccess
-import io.mockk.coEvery
-import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
-import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
-import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
+/**
+ * Tests for the [RecognizeCollector] factory.
+ *
+ * [RecognizeCollector.init] reads `operationType` from the server JSON and returns a fully
+ * initialised [RecognizeEnrollCollector] or [RecognizeAuthenticateCollector].
+ */
 class RecognizeCollectorTest {
 
     @BeforeTest
     fun setUp() {
         mockkObject(Recognize)
-        coEvery { Recognize.setup(any()) } returns Result.success(Unit)
-        coEvery { Recognize.enroll(any()) } returns Result.success(mockk<EnrollmentSuccess>())
-        coEvery { Recognize.authenticate(any()) } returns Result.success(mockk<AuthenticationSuccess>())
     }
 
     @AfterTest
@@ -42,117 +38,59 @@ class RecognizeCollectorTest {
         unmockkObject(Recognize)
     }
 
-    // ── init / id / payload ──────────────────────────────────────────────────
-
     @Test
-    fun initParsesKeyAndActionFromJson() {
-        val collector = RecognizeCollector()
-        collector.init(buildJsonObject {
+    fun `ENROLL operationType returns RecognizeEnrollCollector`() {
+        val input = buildJsonObject {
+            put("operationType", "ENROLL")
             put("key", "recognizeKey")
-            put("action", "setup")
-        })
-        assertEquals("recognizeKey", collector.key)
-        assertEquals("setup", collector.action)
+            put("host", "https://recognize.example.com")
+            put("apiKey", "api-key-123")
+        }
+        val result = RecognizeCollector().init(input)
+
+        assertIs<RecognizeEnrollCollector>(result)
+        assertEquals("recognizeKey", (result as RecognizeEnrollCollector).key)
+        assertEquals("https://recognize.example.com", result.host)
+        assertEquals("api-key-123", result.apiKey)
     }
 
     @Test
-    fun initUsesEmptyStringsWhenFieldsMissing() {
-        val collector = RecognizeCollector()
-        collector.init(buildJsonObject { })
-        assertEquals("", collector.key)
-        assertEquals("", collector.action)
+    fun `AUTHENTICATE operationType returns RecognizeAuthenticateCollector`() {
+        val input = buildJsonObject {
+            put("operationType", "AUTHENTICATE")
+            put("key", "recognizeKey")
+            put("host", "https://recognize.example.com")
+            put("apiKey", "api-key-456")
+        }
+        val result = RecognizeCollector().init(input)
+
+        assertIs<RecognizeAuthenticateCollector>(result)
+        assertEquals("recognizeKey", (result as RecognizeAuthenticateCollector).key)
+        assertEquals("https://recognize.example.com", result.host)
+        assertEquals("api-key-456", result.apiKey)
     }
 
     @Test
-    fun idReturnsKey() {
-        val collector = RecognizeCollector()
-        collector.init(buildJsonObject { put("key", "k1") })
-        assertEquals("k1", collector.id())
-    }
-
-    @Test
-    fun payloadReturnsNullBeforeCollect() {
-        val collector = RecognizeCollector()
-        collector.init(buildJsonObject { put("key", "k") ; put("action", "setup") })
-        assertNull(collector.payload())
-    }
-
-    // ── collect — success paths ──────────────────────────────────────────────
-
-    @Test
-    fun collectDispatchesSetupAndStoresResult() = runTest {
-        val collector = RecognizeCollector()
-        collector.init(buildJsonObject { put("key", "k") ; put("action", "setup") })
-
-        val result = collector.collect()
-
-        assertTrue(result.isSuccess)
-        assertNotNull(collector.payload())
-    }
-
-    @Test
-    fun collectDispatchesBiomEnrollAndStoresResult() = runTest {
-        val collector = RecognizeCollector()
-        collector.init(buildJsonObject { put("key", "k") ; put("action", "biom_enroll") })
-
-        val result = collector.collect()
-
-        assertTrue(result.isSuccess)
-        assertNotNull(collector.payload())
-    }
-
-    @Test
-    fun collectDispatchesBiomAuthAndStoresResult() = runTest {
-        val collector = RecognizeCollector()
-        collector.init(buildJsonObject { put("key", "k") ; put("action", "biom_auth") })
-
-        val result = collector.collect()
-
-        assertTrue(result.isSuccess)
-        assertNotNull(collector.payload())
-    }
-
-    // ── collect — failure paths ──────────────────────────────────────────────
-
-    @Test
-    fun collectReturnsFailureOnSdkException() = runTest {
-        coEvery { Recognize.setup(any()) } throws RuntimeException("sdk error")
-
-        val collector = RecognizeCollector()
-        collector.init(buildJsonObject { put("key", "k") ; put("action", "setup") })
-
-        val result = collector.collect()
-
-        assertTrue(result.isFailure)
-        assertEquals("sdk error", result.exceptionOrNull()?.message)
-        assertNull(collector.payload())
-    }
-
-    @Test
-    fun collectReturnsFailureForUnknownAction() = runTest {
-        val collector = RecognizeCollector()
-        collector.init(buildJsonObject { put("key", "k") ; put("action", "unsupported_action") })
-
-        val result = collector.collect()
-
-        assertTrue(result.isFailure)
-        val exception = result.exceptionOrNull()
-        assertNotNull(exception)
-        assertIs<RecognizeException>(exception)
+    fun `unknown operationType throws IllegalArgumentException`() {
+        val input = buildJsonObject {
+            put("operationType", "UNKNOWN_OP")
+        }
+        val exception = assertFailsWith<IllegalArgumentException> {
+            RecognizeCollector().init(input)
+        }
         assertTrue(
-            exception.message?.contains("unsupported_action") == true,
-            "Exception message should include the unknown action value"
+            exception.message?.contains("UNKNOWN_OP") == true,
+            "Exception message should include the unknown operationType value",
         )
     }
 
     @Test
-    fun payloadRemainsNullAfterFailure() = runTest {
-        coEvery { Recognize.enroll(any()) } returns Result.failure(RecognizeException("fail"))
-
-        val collector = RecognizeCollector()
-        collector.init(buildJsonObject { put("key", "k") ; put("action", "biom_enroll") })
-        collector.collect()
-
-        assertNull(collector.payload())
+    fun `missing operationType throws IllegalArgumentException`() {
+        val input = buildJsonObject {
+            put("key", "recognizeKey")
+        }
+        assertFailsWith<IllegalArgumentException> {
+            RecognizeCollector().init(input)
+        }
     }
 }
