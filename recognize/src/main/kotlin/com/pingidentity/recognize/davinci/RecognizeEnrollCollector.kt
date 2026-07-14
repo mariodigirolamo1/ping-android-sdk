@@ -73,6 +73,7 @@ class RecognizeEnrollCollector : AbstractRecognizeCollector() {
 
             val opts = mobileSDKOptions
             val storedTransactionData = transactionData
+            val storedAudience = audience
             val storedClientState = clientState
             val storedGenerateClientState = generateClientState
 
@@ -93,9 +94,15 @@ class RecognizeEnrollCollector : AbstractRecognizeCollector() {
                     ClientStateType.BACKUP
                 } else null
 
+            val jwtSigningInfo = if (storedAudience.isNotBlank()) {
+                JwtSigningInfo(claimTransactionData = storedTransactionData, audience = storedAudience)
+            } else {
+                JwtSigningInfo(claimTransactionData = storedTransactionData)
+            }
+
             var biomEnrollConfig = BiomEnrollConfig(
                 operationInfo = operationInfo,
-                jwtSigningInfo = JwtSigningInfo(claimTransactionData = storedTransactionData),
+                jwtSigningInfo = jwtSigningInfo,
                 generatingClientState = storedGeneratingClientState,
                 clientState = storedClientState.takeIf { it.isNotEmpty() },
             )

@@ -67,6 +67,10 @@ abstract class AbstractRecognizeCallback : ContinueNodeAware, AbstractCallback()
     var transactionData: String = ""
         private set
 
+    /** JWT audience claim forwarded to the Keyless SDK. */
+    var audience: String = ""
+        private set
+
     /** Indicates whether the SDK should generate a new client state. */
     var generateClientState: String = ""
         private set
@@ -123,6 +127,7 @@ abstract class AbstractRecognizeCallback : ContinueNodeAware, AbstractCallback()
             "apiKey" -> apiKey = value.jsonPrimitive.content
             "username" -> username = value.jsonPrimitive.content
             "transactionData" -> transactionData = value.jsonPrimitive.content
+            "audience" -> audience = value.jsonPrimitive.content
             "generateClientState" -> generateClientState = value.jsonPrimitive.content
             "clientState" -> clientState = value.jsonPrimitive.content
             "mobileSDKOptions" -> if (value is JsonObject) mobileSDKOptions = value

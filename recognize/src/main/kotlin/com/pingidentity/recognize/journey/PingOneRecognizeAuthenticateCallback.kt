@@ -70,6 +70,7 @@ class PingOneRecognizeAuthenticateCallback : AbstractRecognizeCallback() {
 
         val opts = mobileSDKOptions
         val storedTransactionData = transactionData
+        val storedAudience = audience
         val storedGenerateClientState = generateClientState
 
         val opId = opts["operationInfoId"]?.jsonPrimitive?.contentOrNull
@@ -90,11 +91,17 @@ class PingOneRecognizeAuthenticateCallback : AbstractRecognizeCallback() {
 
         // Seed a base instance to read SDK defaults for fields not supplied by the server
         val base = BiomAuthConfig()
+        val jwtSigningInfo = if (storedAudience.isNotBlank()) {
+            JwtSigningInfo(claimTransactionData = storedTransactionData, audience = storedAudience)
+        } else {
+            JwtSigningInfo(claimTransactionData = storedTransactionData)
+        }
+
         val biomAuthConfig = BiomAuthConfig(
             shouldRemovePin = opts["shouldRemovePin"]?.jsonPrimitive?.contentOrNull
                 ?.toBoolean() ?: base.shouldRemovePin,
             operationInfo = operationInfo,
-            jwtSigningInfo = JwtSigningInfo(claimTransactionData = storedTransactionData),
+            jwtSigningInfo = jwtSigningInfo,
             dynamicLinkingInfo = base.dynamicLinkingInfo,
             shouldRetrieveTemporaryState = base.shouldRetrieveTemporaryState,
             livenessConfiguration = opts["livenessConfiguration"]?.jsonPrimitive?.contentOrNull

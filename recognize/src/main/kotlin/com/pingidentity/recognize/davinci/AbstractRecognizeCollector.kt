@@ -43,6 +43,10 @@ abstract class AbstractRecognizeCollector : Collector<JsonObject> {
     var transactionData: String = ""
         private set
 
+    /** JWT audience claim forwarded to the Keyless SDK. */
+    var audience: String = ""
+        private set
+
     /** Existing client state payload supplied by the server. */
     var clientState: String = ""
         private set
@@ -79,6 +83,7 @@ abstract class AbstractRecognizeCollector : Collector<JsonObject> {
         host = input["host"]?.jsonPrimitive?.contentOrNull ?: ""
         apiKey = input["apiKey"]?.jsonPrimitive?.contentOrNull ?: ""
         transactionData = input["transactionData"]?.jsonPrimitive?.contentOrNull ?: ""
+        audience = input["audience"]?.jsonPrimitive?.contentOrNull ?: ""
         clientState = input["clientState"]?.jsonPrimitive?.contentOrNull ?: ""
         generateClientState = input["generateClientState"]?.jsonPrimitive?.contentOrNull ?: ""
         mobileSDKOptions = input["mobileSDKOptions"] as? JsonObject ?: JsonObject(emptyMap())
