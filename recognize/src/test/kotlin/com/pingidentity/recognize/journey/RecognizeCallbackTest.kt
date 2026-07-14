@@ -13,7 +13,9 @@ import com.pingidentity.orchestrate.ContinueNode
 import com.pingidentity.recognize.Recognize
 import io.keyless.sdk.errorshandling.AuthenticationSuccess
 import io.keyless.sdk.errorshandling.EnrollmentSuccess
+import io.keyless.sdk.configurations.SetupConfig
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
@@ -452,6 +454,7 @@ class RecognizeCallbackTest {
         ) as JsonObject
         val callback = RecognizeCallback().init(json) as PingOneRecognizeEnrollCallback
         assertTrue(callback.enroll().isSuccess)
+        coVerify { Recognize.setup(match<SetupConfig> { it.numberOfEnrollmentCircuits == 3 }) }
     }
 
     // ── MetadataCallback mode — operationType from data object ───────────────────

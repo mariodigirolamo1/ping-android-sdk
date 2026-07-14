@@ -54,17 +54,18 @@ class PingOneRecognizeEnrollCallback : AbstractRecognizeCallback() {
      * | `mobileSDKOptions.showFailureFeedback`          | `showFailureFeedback`              |
      * | `mobileSDKOptions.showInstructionsScreen`       | `showInstructionsScreen`           |
      * | `mobileSDKOptions.presentation`                 | `presentationStyle`                |
-     * | `mobileSDKOptions.numberOfEnrollmentCircuits`   | not mapped (no SDK field in 5.8.4) |
+     * | `mobileSDKOptions.numberOfEnrollmentCircuits`   | `setupConfig.numberOfEnrollmentCircuits` |
      *
      * @return [Result] containing [EnrollmentSuccess] on success, or a [Throwable] on failure.
      */
     suspend fun enroll(): Result<EnrollmentSuccess> {
+        val opts = mobileSDKOptions
         val setupConfig = SetupConfig(
             apiKey = this@PingOneRecognizeEnrollCallback.apiKey,
-            hosts = listOf(this@PingOneRecognizeEnrollCallback.host)
+            hosts = listOf(this@PingOneRecognizeEnrollCallback.host),
+            numberOfEnrollmentCircuits = opts["numberOfEnrollmentCircuits"]?.jsonPrimitive?.contentOrNull
+                ?.toIntOrNull() ?: SetupConfig.DEFAULT_ENROLLMENT_CIRCUIT_NUMBER,
         )
-
-        val opts = mobileSDKOptions
         val storedTransactionData = transactionData
         val storedClientState = clientState
         val storedGenerateClientState = generateClientState

@@ -55,6 +55,7 @@ class PingOneRecognizeAuthenticateCallback : AbstractRecognizeCallback() {
      * | `mobileSDKOptions.shouldRetriveAuthenticationFrame` | `shouldRetrieveAuthenticationFrame` |
      * | `mobileSDKOptions.presentationStyle`            | `presentationStyle`                  |
      * | `mobileSDKOptions.shouldRemovePin`              | `shouldRemovePin`                    |
+     * | `mobileSDKOptions.numberOfEnrollmentCircuits`   | `setupConfig.numberOfEnrollmentCircuits` |
      *
      * Note: `showFailureFeedback`, `shouldRetrieveSecret`, and `shouldDeleteSecret` are present
      * in the server spec but are not mapped — `BiomAuthConfig` (SDK 5.8.4) does not expose
@@ -63,12 +64,13 @@ class PingOneRecognizeAuthenticateCallback : AbstractRecognizeCallback() {
      * @return [Result] containing [AuthenticationSuccess] on success, or a [Throwable] on failure.
      */
     suspend fun authenticate(): Result<AuthenticationSuccess> {
+        val opts = mobileSDKOptions
         val setupConfig = SetupConfig(
             apiKey = this@PingOneRecognizeAuthenticateCallback.apiKey,
-            hosts = listOf(this@PingOneRecognizeAuthenticateCallback.host)
+            hosts = listOf(this@PingOneRecognizeAuthenticateCallback.host),
+            numberOfEnrollmentCircuits = opts["numberOfEnrollmentCircuits"]?.jsonPrimitive?.contentOrNull
+                ?.toIntOrNull() ?: SetupConfig.DEFAULT_ENROLLMENT_CIRCUIT_NUMBER,
         )
-
-        val opts = mobileSDKOptions
         val storedTransactionData = transactionData
         val storedAudience = audience
         val storedGenerateClientState = generateClientState
