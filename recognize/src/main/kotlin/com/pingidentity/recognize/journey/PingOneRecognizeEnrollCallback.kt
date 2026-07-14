@@ -158,9 +158,7 @@ class PingOneRecognizeEnrollCallback : AbstractRecognizeCallback() {
             setValueCallback(CLIENT_ERROR_SUFFIX, clientError)
             setValueCallback(CLIENT_ERROR_CODE_SUFFIX, clientErrorCode)
         } else {
-            // Input order matches server fields: signedJwt, clientState, recognizeId,
-            // devicePublicSigningKey (always empty for enroll), clientError
-            input(signedJwt, clientState, recognizeId, "", clientError)
+            input(signedJwt, clientState, recognizeId, clientError, clientErrorCode)
         }
     }
 }

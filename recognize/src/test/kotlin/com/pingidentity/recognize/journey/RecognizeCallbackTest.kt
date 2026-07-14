@@ -14,11 +14,14 @@ import com.pingidentity.recognize.Recognize
 import io.keyless.sdk.errorshandling.AuthenticationSuccess
 import io.keyless.sdk.errorshandling.EnrollmentSuccess
 import io.keyless.sdk.configurations.SetupConfig
+import io.keyless.sdk.configurations.enroll.BiomEnrollConfig
+import io.keyless.sdk.configurations.auth.BiomAuthConfig
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
+import io.mockk.slot
 import io.mockk.unmockkObject
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -455,6 +458,492 @@ class RecognizeCallbackTest {
         val callback = RecognizeCallback().init(json) as PingOneRecognizeEnrollCallback
         assertTrue(callback.enroll().isSuccess)
         coVerify { Recognize.setup(match<SetupConfig> { it.numberOfEnrollmentCircuits == 3 }) }
+    }
+
+    // ── audience wiring ──────────────────────────────────────────────────────────
+
+    @Test
+    fun `enroll audience is forwarded to JwtSigningInfo`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType", "value": "ENROLL" },
+                { "name": "host",          "value": "h" },
+                { "name": "apiKey",        "value": "k" },
+                { "name": "audience",      "value": "my-audience" }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",       "value": "" },
+                { "name": "IDToken1clientState",     "value": "" },
+                { "name": "IDToken1recognizeId",     "value": "" },
+                { "name": "IDToken1clientError",     "value": "" },
+                { "name": "IDToken1clientErrorCode", "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        val enrollSlot = slot<BiomEnrollConfig>()
+        coEvery { Recognize.enroll(capture(enrollSlot)) } returns Result.success(enrollSuccess)
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeEnrollCallback
+        assertTrue(callback.enroll().isSuccess)
+        assertEquals("my-audience", enrollSlot.captured.jwtSigningInfo?.audience)
+    }
+
+    @Test
+    fun `auth audience is forwarded to JwtSigningInfo`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType", "value": "AUTHENTICATE" },
+                { "name": "host",          "value": "h" },
+                { "name": "apiKey",        "value": "k" },
+                { "name": "audience",      "value": "my-audience" }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",              "value": "" },
+                { "name": "IDToken1clientState",            "value": "" },
+                { "name": "IDToken1recognizeId",            "value": "" },
+                { "name": "IDToken1devicePublicSigningKey", "value": "" },
+                { "name": "IDToken1clientError",            "value": "" },
+                { "name": "IDToken1clientErrorCode",        "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        val authSlot = slot<BiomAuthConfig>()
+        coEvery { Recognize.authenticate(capture(authSlot)) } returns Result.success(authSuccess)
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeAuthenticateCallback
+        assertTrue(callback.authenticate().isSuccess)
+        assertEquals("my-audience", authSlot.captured.jwtSigningInfo?.audience)
+    }
+
+    // ── enroll mobileSDKOptions — remaining fields ───────────────────────────────
+
+    @Test
+    fun `enroll clientState empty string is not forwarded`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType", "value": "ENROLL" },
+                { "name": "host",          "value": "h" },
+                { "name": "apiKey",        "value": "k" },
+                { "name": "clientState",   "value": "" }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",       "value": "" },
+                { "name": "IDToken1clientState",     "value": "" },
+                { "name": "IDToken1recognizeId",     "value": "" },
+                { "name": "IDToken1clientError",     "value": "" },
+                { "name": "IDToken1clientErrorCode", "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        val enrollSlot = slot<BiomEnrollConfig>()
+        coEvery { Recognize.enroll(capture(enrollSlot)) } returns Result.success(enrollSuccess)
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeEnrollCallback
+        assertTrue(callback.enroll().isSuccess)
+        assertEquals(null, enrollSlot.captured.clientState)
+    }
+
+    @Test
+    fun `enroll operationInfo is null when no operationInfo keys present`() = runTest {
+        val enrollSlot = slot<BiomEnrollConfig>()
+        coEvery { Recognize.enroll(capture(enrollSlot)) } returns Result.success(enrollSuccess)
+        val callback = RecognizeCallback().init(enrollCallbackJson()) as PingOneRecognizeEnrollCallback
+        assertTrue(callback.enroll().isSuccess)
+        assertEquals(null, enrollSlot.captured.operationInfo)
+    }
+
+    @Test
+    fun `enroll mobileSDKOptions livenessEnvironmentAware is forwarded`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType",    "value": "ENROLL" },
+                { "name": "host",             "value": "h" },
+                { "name": "apiKey",           "value": "k" },
+                { "name": "mobileSDKOptions", "value": { "livenessEnvironmentAware": "true" } }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",       "value": "" },
+                { "name": "IDToken1clientState",     "value": "" },
+                { "name": "IDToken1recognizeId",     "value": "" },
+                { "name": "IDToken1clientError",     "value": "" },
+                { "name": "IDToken1clientErrorCode", "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        val enrollSlot = slot<BiomEnrollConfig>()
+        coEvery { Recognize.enroll(capture(enrollSlot)) } returns Result.success(enrollSuccess)
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeEnrollCallback
+        assertTrue(callback.enroll().isSuccess)
+        assertTrue(enrollSlot.captured.livenessEnvironmentAware)
+    }
+
+    @Test
+    fun `enroll mobileSDKOptions cameraDelaySeconds is forwarded`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType",    "value": "ENROLL" },
+                { "name": "host",             "value": "h" },
+                { "name": "apiKey",           "value": "k" },
+                { "name": "mobileSDKOptions", "value": { "cameraDelaySeconds": "5" } }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",       "value": "" },
+                { "name": "IDToken1clientState",     "value": "" },
+                { "name": "IDToken1recognizeId",     "value": "" },
+                { "name": "IDToken1clientError",     "value": "" },
+                { "name": "IDToken1clientErrorCode", "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        val enrollSlot = slot<BiomEnrollConfig>()
+        coEvery { Recognize.enroll(capture(enrollSlot)) } returns Result.success(enrollSuccess)
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeEnrollCallback
+        assertTrue(callback.enroll().isSuccess)
+        assertEquals(5, enrollSlot.captured.cameraDelaySeconds)
+    }
+
+    @Test
+    fun `enroll mobileSDKOptions shouldRetrieveEnrollmentFrame is forwarded`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType",    "value": "ENROLL" },
+                { "name": "host",             "value": "h" },
+                { "name": "apiKey",           "value": "k" },
+                { "name": "mobileSDKOptions", "value": { "shouldRetrieveEnrollmentFrame": "true" } }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",       "value": "" },
+                { "name": "IDToken1clientState",     "value": "" },
+                { "name": "IDToken1recognizeId",     "value": "" },
+                { "name": "IDToken1clientError",     "value": "" },
+                { "name": "IDToken1clientErrorCode", "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        val enrollSlot = slot<BiomEnrollConfig>()
+        coEvery { Recognize.enroll(capture(enrollSlot)) } returns Result.success(enrollSuccess)
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeEnrollCallback
+        assertTrue(callback.enroll().isSuccess)
+        assertTrue(enrollSlot.captured.shouldRetrieveEnrollmentFrame)
+    }
+
+    @Test
+    fun `enroll mobileSDKOptions showSuccessFeedback is forwarded`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType",    "value": "ENROLL" },
+                { "name": "host",             "value": "h" },
+                { "name": "apiKey",           "value": "k" },
+                { "name": "mobileSDKOptions", "value": { "showSuccessFeedback": "false" } }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",       "value": "" },
+                { "name": "IDToken1clientState",     "value": "" },
+                { "name": "IDToken1recognizeId",     "value": "" },
+                { "name": "IDToken1clientError",     "value": "" },
+                { "name": "IDToken1clientErrorCode", "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        val enrollSlot = slot<BiomEnrollConfig>()
+        coEvery { Recognize.enroll(capture(enrollSlot)) } returns Result.success(enrollSuccess)
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeEnrollCallback
+        assertTrue(callback.enroll().isSuccess)
+        assertEquals(false, enrollSlot.captured.showSuccessFeedback)
+    }
+
+    @Test
+    fun `enroll mobileSDKOptions showFailureFeedback is forwarded`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType",    "value": "ENROLL" },
+                { "name": "host",             "value": "h" },
+                { "name": "apiKey",           "value": "k" },
+                { "name": "mobileSDKOptions", "value": { "showFailureFeedback": "false" } }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",       "value": "" },
+                { "name": "IDToken1clientState",     "value": "" },
+                { "name": "IDToken1recognizeId",     "value": "" },
+                { "name": "IDToken1clientError",     "value": "" },
+                { "name": "IDToken1clientErrorCode", "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        val enrollSlot = slot<BiomEnrollConfig>()
+        coEvery { Recognize.enroll(capture(enrollSlot)) } returns Result.success(enrollSuccess)
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeEnrollCallback
+        assertTrue(callback.enroll().isSuccess)
+        assertEquals(false, enrollSlot.captured.showFailureFeedback)
+    }
+
+    @Test
+    fun `enroll mobileSDKOptions showInstructionsScreen is forwarded`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType",    "value": "ENROLL" },
+                { "name": "host",             "value": "h" },
+                { "name": "apiKey",           "value": "k" },
+                { "name": "mobileSDKOptions", "value": { "showInstructionsScreen": "false" } }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",       "value": "" },
+                { "name": "IDToken1clientState",     "value": "" },
+                { "name": "IDToken1recognizeId",     "value": "" },
+                { "name": "IDToken1clientError",     "value": "" },
+                { "name": "IDToken1clientErrorCode", "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        val enrollSlot = slot<BiomEnrollConfig>()
+        coEvery { Recognize.enroll(capture(enrollSlot)) } returns Result.success(enrollSuccess)
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeEnrollCallback
+        assertTrue(callback.enroll().isSuccess)
+        assertEquals(false, enrollSlot.captured.showInstructionsScreen)
+    }
+
+    @Test
+    fun `enroll mobileSDKOptions presentation maps to presentationStyle`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType",    "value": "ENROLL" },
+                { "name": "host",             "value": "h" },
+                { "name": "apiKey",           "value": "k" },
+                { "name": "mobileSDKOptions", "value": { "presentation": "OVERLAY" } }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",       "value": "" },
+                { "name": "IDToken1clientState",     "value": "" },
+                { "name": "IDToken1recognizeId",     "value": "" },
+                { "name": "IDToken1clientError",     "value": "" },
+                { "name": "IDToken1clientErrorCode", "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        val enrollSlot = slot<BiomEnrollConfig>()
+        coEvery { Recognize.enroll(capture(enrollSlot)) } returns Result.success(enrollSuccess)
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeEnrollCallback
+        assertTrue(callback.enroll().isSuccess)
+        assertEquals(
+            io.keyless.sdk.configurations.enroll.PresentationStyle.OVERLAY,
+            enrollSlot.captured.presentationStyle
+        )
+    }
+
+    @Test
+    fun `enroll numberOfEnrollmentCircuits absent uses SDK default`() = runTest {
+        val setupSlot = slot<SetupConfig>()
+        coEvery { Recognize.setup(capture(setupSlot)) } returns Result.success(Unit)
+        val callback = RecognizeCallback().init(enrollCallbackJson()) as PingOneRecognizeEnrollCallback
+        assertTrue(callback.enroll().isSuccess)
+        assertEquals(SetupConfig.DEFAULT_ENROLLMENT_CIRCUIT_NUMBER, setupSlot.captured.numberOfEnrollmentCircuits)
+    }
+
+    // ── auth mobileSDKOptions — remaining fields ─────────────────────────────────
+
+    @Test
+    fun `auth operationInfo is null when no operationInfo keys present`() = runTest {
+        val authSlot = slot<BiomAuthConfig>()
+        coEvery { Recognize.authenticate(capture(authSlot)) } returns Result.success(authSuccess)
+        val callback = RecognizeCallback().init(authCallbackJson()) as PingOneRecognizeAuthenticateCallback
+        assertTrue(callback.authenticate().isSuccess)
+        assertEquals(null, authSlot.captured.operationInfo)
+    }
+
+    @Test
+    fun `auth mobileSDKOptions livenessEnvironmentAware is forwarded`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType",    "value": "AUTHENTICATE" },
+                { "name": "host",             "value": "h" },
+                { "name": "apiKey",           "value": "k" },
+                { "name": "mobileSDKOptions", "value": { "livenessEnvironmentAware": "true" } }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",              "value": "" },
+                { "name": "IDToken1clientState",            "value": "" },
+                { "name": "IDToken1recognizeId",            "value": "" },
+                { "name": "IDToken1devicePublicSigningKey", "value": "" },
+                { "name": "IDToken1clientError",            "value": "" },
+                { "name": "IDToken1clientErrorCode",        "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        val authSlot = slot<BiomAuthConfig>()
+        coEvery { Recognize.authenticate(capture(authSlot)) } returns Result.success(authSuccess)
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeAuthenticateCallback
+        assertTrue(callback.authenticate().isSuccess)
+        assertTrue(authSlot.captured.livenessEnvironmentAware)
+    }
+
+    @Test
+    fun `auth mobileSDKOptions cameraDelaySeconds is forwarded`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType",    "value": "AUTHENTICATE" },
+                { "name": "host",             "value": "h" },
+                { "name": "apiKey",           "value": "k" },
+                { "name": "mobileSDKOptions", "value": { "cameraDelaySeconds": "3" } }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",              "value": "" },
+                { "name": "IDToken1clientState",            "value": "" },
+                { "name": "IDToken1recognizeId",            "value": "" },
+                { "name": "IDToken1devicePublicSigningKey", "value": "" },
+                { "name": "IDToken1clientError",            "value": "" },
+                { "name": "IDToken1clientErrorCode",        "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        val authSlot = slot<BiomAuthConfig>()
+        coEvery { Recognize.authenticate(capture(authSlot)) } returns Result.success(authSuccess)
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeAuthenticateCallback
+        assertTrue(callback.authenticate().isSuccess)
+        assertEquals(3, authSlot.captured.cameraDelaySeconds)
+    }
+
+    @Test
+    fun `auth mobileSDKOptions showSuccessFeedback is forwarded`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType",    "value": "AUTHENTICATE" },
+                { "name": "host",             "value": "h" },
+                { "name": "apiKey",           "value": "k" },
+                { "name": "mobileSDKOptions", "value": { "showSuccessFeedback": "false" } }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",              "value": "" },
+                { "name": "IDToken1clientState",            "value": "" },
+                { "name": "IDToken1recognizeId",            "value": "" },
+                { "name": "IDToken1devicePublicSigningKey", "value": "" },
+                { "name": "IDToken1clientError",            "value": "" },
+                { "name": "IDToken1clientErrorCode",        "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        val authSlot = slot<BiomAuthConfig>()
+        coEvery { Recognize.authenticate(capture(authSlot)) } returns Result.success(authSuccess)
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeAuthenticateCallback
+        assertTrue(callback.authenticate().isSuccess)
+        assertEquals(false, authSlot.captured.showSuccessFeedback)
+    }
+
+    @Test
+    fun `auth mobileSDKOptions shouldRemovePin is forwarded`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType",    "value": "AUTHENTICATE" },
+                { "name": "host",             "value": "h" },
+                { "name": "apiKey",           "value": "k" },
+                { "name": "mobileSDKOptions", "value": { "shouldRemovePin": "true" } }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",              "value": "" },
+                { "name": "IDToken1clientState",            "value": "" },
+                { "name": "IDToken1recognizeId",            "value": "" },
+                { "name": "IDToken1devicePublicSigningKey", "value": "" },
+                { "name": "IDToken1clientError",            "value": "" },
+                { "name": "IDToken1clientErrorCode",        "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        val authSlot = slot<BiomAuthConfig>()
+        coEvery { Recognize.authenticate(capture(authSlot)) } returns Result.success(authSuccess)
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeAuthenticateCallback
+        assertTrue(callback.authenticate().isSuccess)
+        assertTrue(authSlot.captured.shouldRemovePin)
+    }
+
+    @Test
+    fun `auth mobileSDKOptions numberOfEnrollmentCircuits absent uses SDK default`() = runTest {
+        val setupSlot = slot<SetupConfig>()
+        coEvery { Recognize.setup(capture(setupSlot)) } returns Result.success(Unit)
+        val callback = RecognizeCallback().init(authCallbackJson()) as PingOneRecognizeAuthenticateCallback
+        assertTrue(callback.authenticate().isSuccess)
+        assertEquals(SetupConfig.DEFAULT_ENROLLMENT_CIRCUIT_NUMBER, setupSlot.captured.numberOfEnrollmentCircuits)
+    }
+
+    @Test
+    fun `auth mobileSDKOptions numberOfEnrollmentCircuits is forwarded to SetupConfig`() = runTest {
+        val json = Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType",    "value": "AUTHENTICATE" },
+                { "name": "host",             "value": "h" },
+                { "name": "apiKey",           "value": "k" },
+                { "name": "mobileSDKOptions", "value": { "numberOfEnrollmentCircuits": "5" } }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",              "value": "" },
+                { "name": "IDToken1clientState",            "value": "" },
+                { "name": "IDToken1recognizeId",            "value": "" },
+                { "name": "IDToken1devicePublicSigningKey", "value": "" },
+                { "name": "IDToken1clientError",            "value": "" },
+                { "name": "IDToken1clientErrorCode",        "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+        val setupSlot = slot<SetupConfig>()
+        coEvery { Recognize.setup(capture(setupSlot)) } returns Result.success(Unit)
+        val callback = RecognizeCallback().init(json) as PingOneRecognizeAuthenticateCallback
+        assertTrue(callback.authenticate().isSuccess)
+        assertEquals(5, setupSlot.captured.numberOfEnrollmentCircuits)
     }
 
     // ── MetadataCallback mode — operationType from data object ───────────────────
