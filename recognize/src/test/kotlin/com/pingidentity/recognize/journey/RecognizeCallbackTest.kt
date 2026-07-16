@@ -64,6 +64,7 @@ class RecognizeCallbackTest {
         coEvery { Recognize.setup(any()) } returns Result.success(Unit)
         coEvery { Recognize.enroll(any()) } returns Result.success(enrollSuccess)
         coEvery { Recognize.authenticate(any()) } returns Result.success(authSuccess)
+        coEvery { Recognize.validateUserAndDeviceActive() } returns Result.success(Unit)
     }
 
     @AfterTest
@@ -157,7 +158,7 @@ class RecognizeCallbackTest {
             { "name": "host",                "value": "https://recognize.example.com" },
             { "name": "apiKey",              "value": "test-api-key" },
             { "name": "transactionData",     "value": "tx-data" },
-            { "name": "clientState",         "value": "cs" },
+            { "name": "clientState",         "value": "" },
             { "name": "generateClientState", "value": "" }
           ],
           "input": [
@@ -357,6 +358,81 @@ class RecognizeCallbackTest {
 
         val inputs = callback.payload()["input"]!!.jsonArray
         assertEquals("setup failed", inputs[4].jsonObject["value"]!!.jsonPrimitive.content)
+    }
+
+    // ── clientState enrollment-check branch ─────────────────────────────────
+
+    private fun authWithClientStateJson(clientStateValue: String = "stored-cs"): JsonObject =
+        Json.parseToJsonElement(
+            """
+            {
+              "type": "PingOneRecognizeCallback",
+              "output": [
+                { "name": "operationType",       "value": "AUTHENTICATE" },
+                { "name": "host",                "value": "https://recognize.example.com" },
+                { "name": "apiKey",              "value": "test-api-key" },
+                { "name": "transactionData",     "value": "tx-data" },
+                { "name": "clientState",         "value": "$clientStateValue" },
+                { "name": "generateClientState", "value": "" }
+              ],
+              "input": [
+                { "name": "IDToken1signedJwt",              "value": "" },
+                { "name": "IDToken1clientState",            "value": "" },
+                { "name": "IDToken1recognizeId",            "value": "" },
+                { "name": "IDToken1devicePublicSigningKey", "value": "" },
+                { "name": "IDToken1clientError",            "value": "" },
+                { "name": "IDToken1clientErrorCode",        "value": "" }
+              ]
+            }
+            """
+        ) as JsonObject
+
+    @Test
+    fun `clientState present and user enrolled calls authenticate not enroll`() = runTest {
+        coEvery { Recognize.validateUserAndDeviceActive() } returns Result.success(Unit)
+
+        val callback = RecognizeCallback().init(authWithClientStateJson()) as PingOneRecognizeAuthenticateCallback
+        assertTrue(callback.authenticate().isSuccess)
+
+        coVerify(exactly = 1) { Recognize.authenticate(any()) }
+        coVerify(exactly = 0) { Recognize.enroll(any()) }
+    }
+
+    @Test
+    fun `clientState present and user not enrolled calls enroll with clientState`() = runTest {
+        coEvery { Recognize.validateUserAndDeviceActive() } returns Result.failure(IOException("not enrolled"))
+        val enrollSlot = slot<BiomEnrollConfig>()
+        coEvery { Recognize.enroll(capture(enrollSlot)) } returns Result.success(enrollSuccess)
+
+        val callback = RecognizeCallback().init(authWithClientStateJson("my-client-state")) as PingOneRecognizeAuthenticateCallback
+        assertTrue(callback.authenticate().isSuccess)
+
+        coVerify(exactly = 0) { Recognize.authenticate(any()) }
+        coVerify(exactly = 1) { Recognize.enroll(any()) }
+        assertEquals("my-client-state", enrollSlot.captured.clientState)
+    }
+
+    @Test
+    fun `clientState absent skips validateUserAndDeviceActive and calls authenticate`() = runTest {
+        val callback = RecognizeCallback().init(authCallbackJson()) as PingOneRecognizeAuthenticateCallback
+        assertTrue(callback.authenticate().isSuccess)
+
+        coVerify(exactly = 0) { Recognize.validateUserAndDeviceActive() }
+        coVerify(exactly = 1) { Recognize.authenticate(any()) }
+    }
+
+    @Test
+    fun `clientState present and enroll fails writes error to input`() = runTest {
+        val error = IOException("enroll from client state failed")
+        coEvery { Recognize.validateUserAndDeviceActive() } returns Result.failure(IOException("not enrolled"))
+        coEvery { Recognize.enroll(any()) } returns Result.failure(error)
+
+        val callback = RecognizeCallback().init(authWithClientStateJson()) as PingOneRecognizeAuthenticateCallback
+        val result = callback.authenticate()
+        assertTrue(result.isFailure)
+
+        val inputs = callback.payload()["input"]!!.jsonArray
+        assertEquals("enroll from client state failed", inputs[4].jsonObject["value"]!!.jsonPrimitive.content)
     }
 
     // ── Common fields parsed by AbstractRecognizeCallback ───────────────────────

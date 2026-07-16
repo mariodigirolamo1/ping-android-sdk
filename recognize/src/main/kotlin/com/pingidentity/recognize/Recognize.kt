@@ -16,6 +16,24 @@ import io.keyless.sdk.errorshandling.EnrollmentSuccess
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 object Recognize {
+    internal suspend fun validateUserAndDeviceActive(): Result<Unit> =
+        suspendCancellableCoroutine { cont ->
+            Keyless.validateUserAndDeviceActive { result ->
+                when (result) {
+                    is Keyless.KeylessResult.Success -> {
+                        cont.resume(Result.success(Unit)) { cause, _, _ ->
+                            cont.cancel(cause)
+                        }
+                    }
+                    is Keyless.KeylessResult.Failure -> {
+                        cont.resume(Result.failure(result.error)) { cause, _, _ ->
+                            cont.cancel(cause)
+                        }
+                    }
+                }
+            }
+        }
+
     internal suspend fun setup(
         setupConfig: SetupConfig
     ) = suspendCancellableCoroutine { continuation ->

@@ -9,13 +9,8 @@ package com.pingidentity.recognize.journey
 
 import com.pingidentity.recognize.Recognize
 import io.keyless.sdk.biom.liveness.LivenessSettings
-import io.keyless.sdk.configurations.ClientStateType
-import io.keyless.sdk.configurations.OperationInfo
 import io.keyless.sdk.configurations.PresentationStyle
-import io.keyless.sdk.configurations.SetupConfig
 import io.keyless.sdk.configurations.auth.BiomAuthConfig
-import io.keyless.sdk.core.actions.model.JwtSigningInfo
-import io.keyless.sdk.errorshandling.AuthenticationSuccess
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -36,74 +31,79 @@ import kotlinx.serialization.json.jsonPrimitive
 class PingOneRecognizeAuthenticateCallback : AbstractRecognizeCallback() {
 
     /**
-     * Performs the PingOne Recognize authentication ceremony.
+     * Resolves which Keyless operation to run and executes it.
      *
-     * Automatically maps every server-supplied output field to the corresponding
-     * [BiomAuthConfig] parameter:
+     * When `clientState` is non-empty, [Recognize.setup] runs first, then
+     * [Recognize.validateUserAndDeviceActive] determines the operation:
+     * - Not enrolled → [Recognize.enroll] with the received `clientState` as input.
+     * - Enrolled (or no `clientState`) → [Recognize.authenticate] as normal.
      *
-     * | Callback field / mobileSDKOptions key           | BiomAuthConfig property              |
-     * |-------------------------------------------------|--------------------------------------|
-     * | `transactionData`                               | `jwtSigningInfo.claimTransactionData` |
-     * | `generateClientState` (`"true"` → BACKUP)       | `generatingClientState`              |
-     * | `mobileSDKOptions.operationInfoId`              | `operationInfo.operationId`          |
-     * | `mobileSDKOptions.operationInfoPayload`         | `operationInfo.payload`              |
-     * | `mobileSDKOptions.operationInfoExternalUserId`  | `operationInfo.externalUserId`       |
-     * | `mobileSDKOptions.livenessConfiguration`        | `livenessConfiguration`              |
-     * | `mobileSDKOptions.livenessEnvironmentAware`     | `livenessEnvironmentAware`           |
-     * | `mobileSDKOptions.cameraDelaySeconds`           | `cameraDelaySeconds`                 |
-     * | `mobileSDKOptions.showSuccessFeedback`          | `showSuccessFeedback`                |
-     * | `mobileSDKOptions.shouldRetriveAuthenticationFrame` | `shouldRetrieveAuthenticationFrame` |
-     * | `mobileSDKOptions.presentationStyle`            | `presentationStyle`                  |
-     * | `mobileSDKOptions.shouldRemovePin`              | `shouldRemovePin`                    |
-     * | `mobileSDKOptions.numberOfEnrollmentCircuits`   | `setupConfig.numberOfEnrollmentCircuits` |
+     * Auth config field mapping ([BiomAuthConfig] only — enroll fields are handled by [buildEnrollConfig]):
      *
-     * Note: `showFailureFeedback`, `shouldRetrieveSecret`, and `shouldDeleteSecret` are present
-     * in the server spec but are not mapped — `BiomAuthConfig` (SDK 5.8.4) does not expose
-     * boolean fields for these; they are handled via typed `KeylessSecret` parameters instead.
-     *
-     * @return [Result] containing [AuthenticationSuccess] on success, or a [Throwable] on failure.
+     * | Callback field / mobileSDKOptions key               | BiomAuthConfig property              |
+     * |-----------------------------------------------------|--------------------------------------|
+     * | `transactionData`                                   | `jwtSigningInfo.claimTransactionData` |
+     * | `generateClientState` (`"true"` → BACKUP)           | `generatingClientState`              |
+     * | `mobileSDKOptions.operationInfoId`                  | `operationInfo.operationId`          |
+     * | `mobileSDKOptions.operationInfoPayload`             | `operationInfo.payload`              |
+     * | `mobileSDKOptions.operationInfoExternalUserId`      | `operationInfo.externalUserId`       |
+     * | `mobileSDKOptions.livenessConfiguration`            | `livenessConfiguration`              |
+     * | `mobileSDKOptions.livenessEnvironmentAware`         | `livenessEnvironmentAware`           |
+     * | `mobileSDKOptions.cameraDelaySeconds`               | `cameraDelaySeconds`                 |
+     * | `mobileSDKOptions.showSuccessFeedback`              | `showSuccessFeedback`                |
+     * | `mobileSDKOptions.presentationStyle`                | `presentationStyle`                  |
+     * | `mobileSDKOptions.shouldRemovePin`                  | `shouldRemovePin`                    |
+     * | `mobileSDKOptions.shouldRetriveAuthenticationFrame` | `shouldRetrieveAuthenticationFrame`  |
+     * | `mobileSDKOptions.numberOfEnrollmentCircuits`       | `setupConfig.numberOfEnrollmentCircuits` |
      */
-    suspend fun authenticate(): Result<AuthenticationSuccess> {
-        val opts = mobileSDKOptions
-        val setupConfig = SetupConfig(
-            apiKey = this@PingOneRecognizeAuthenticateCallback.apiKey,
-            hosts = listOf(this@PingOneRecognizeAuthenticateCallback.host),
-            numberOfEnrollmentCircuits = opts["numberOfEnrollmentCircuits"]?.jsonPrimitive?.contentOrNull
-                ?.toIntOrNull() ?: SetupConfig.DEFAULT_ENROLLMENT_CIRCUIT_NUMBER,
-        )
-        val storedTransactionData = transactionData
-        val storedAudience = audience
-        val storedGenerateClientState = generateClientState
+    suspend fun authenticate(): Result<Unit> {
+        val storedClientState = clientState
 
-        val opId = opts["operationInfoId"]?.jsonPrimitive?.contentOrNull
-        val opPayload = opts["operationInfoPayload"]?.jsonPrimitive?.contentOrNull
-        val opExternalUserId = opts["operationInfoExternalUserId"]?.jsonPrimitive?.contentOrNull
-        val operationInfo = if (opId != null || opPayload != null || opExternalUserId != null) {
-            OperationInfo(
-                /* operationId = */ opId ?: "",
-                /* payload = */ opPayload ?: "",
-                /* externalUserId = */ opExternalUserId ?: ""
+        return Recognize.setup(buildSetupConfig())
+            .fold(
+                onSuccess = {
+                    // validateUserAndDeviceActive requires the SDK to be configured first.
+                    val shouldEnroll = storedClientState.isNotEmpty() &&
+                        !Recognize.validateUserAndDeviceActive().isSuccess
+                    if (shouldEnroll) {
+                        Recognize.enroll(buildEnrollConfig(clientStateOverride = storedClientState))
+                            .map { success -> AuthResult(success.signedJwt ?: "", success.clientState ?: "") }
+                    } else {
+                        Recognize.authenticate(buildAuthConfig())
+                            .map { success -> AuthResult(success.signedJwt ?: "", success.clientState ?: "") }
+                    }
+                },
+                onFailure = { Result.failure(it) }
             )
-        } else null
+            .onSuccess { result ->
+                submitResult(
+                    signedJwt = result.signedJwt,
+                    clientState = result.clientState,
+                    devicePublicSigningKey = "",
+                    clientError = "",
+                    clientErrorCode = "",
+                )
+            }
+            .onFailure { error ->
+                submitResult(
+                    signedJwt = "",
+                    clientState = "",
+                    devicePublicSigningKey = "",
+                    clientError = error.message ?: "UNKNOWN_ERROR",
+                    clientErrorCode = "",
+                )
+            }
+            .map { }
+    }
 
-        // "true" → ClientStateType.BACKUP, "false"/empty → null
-        val storedGeneratingClientState = if (storedGenerateClientState.equals("true", ignoreCase = true)) {
-            ClientStateType.BACKUP
-        } else null
-
-        // Seed a base instance to read SDK defaults for fields not supplied by the server
+    private fun buildAuthConfig(): BiomAuthConfig {
+        val opts = mobileSDKOptions
         val base = BiomAuthConfig()
-        val jwtSigningInfo = if (storedAudience.isNotBlank()) {
-            JwtSigningInfo(claimTransactionData = storedTransactionData, audience = storedAudience)
-        } else {
-            JwtSigningInfo(claimTransactionData = storedTransactionData)
-        }
-
-        val biomAuthConfig = BiomAuthConfig(
+        return BiomAuthConfig(
             shouldRemovePin = opts["shouldRemovePin"]?.jsonPrimitive?.contentOrNull
                 ?.toBoolean() ?: base.shouldRemovePin,
-            operationInfo = operationInfo,
-            jwtSigningInfo = jwtSigningInfo,
+            operationInfo = buildOperationInfo(),
+            jwtSigningInfo = buildJwtSigningInfo(),
             dynamicLinkingInfo = base.dynamicLinkingInfo,
             shouldRetrieveTemporaryState = base.shouldRetrieveTemporaryState,
             livenessConfiguration = opts["livenessConfiguration"]?.jsonPrimitive?.contentOrNull
@@ -120,7 +120,7 @@ class PingOneRecognizeAuthenticateCallback : AbstractRecognizeCallback() {
             presentationStyle = opts["presentationStyle"]?.jsonPrimitive?.contentOrNull
                 ?.let { runCatching { PresentationStyle.valueOf(it) }.getOrNull() }
                 ?: base.presentationStyle,
-            generatingClientState = storedGeneratingClientState,
+            generatingClientState = buildGeneratingClientState(),
             // Server sends this key with a typo (missing 'e' in 'Retrieve')
             shouldRetrieveAuthenticationFrame = opts["shouldRetriveAuthenticationFrame"]
                 ?.jsonPrimitive?.contentOrNull?.toBoolean() ?: base.shouldRetrieveAuthenticationFrame,
@@ -129,33 +129,9 @@ class PingOneRecognizeAuthenticateCallback : AbstractRecognizeCallback() {
             retrievingSecret = base.retrievingSecret,
             shouldRetrieveSecretIDs = base.shouldRetrieveSecretIDs,
         )
-
-        // Chain setup → authenticate so a setup failure is also reported back to the server
-        // via input() before propagating — no try/catch needed.
-        return Recognize.setup(setupConfig)
-            .fold(
-                onSuccess = { Recognize.authenticate(biomAuthConfig) },
-                onFailure = { Result.failure(it) }
-            )
-            .onSuccess { success ->
-                submitResult(
-                    signedJwt = success.signedJwt ?: "",
-                    clientState = success.clientState ?: "",
-                    devicePublicSigningKey = "",
-                    clientError = "",
-                    clientErrorCode = "",
-                )
-            }
-            .onFailure { error ->
-                submitResult(
-                    signedJwt = "",
-                    clientState = "",
-                    devicePublicSigningKey = "",
-                    clientError = error.message ?: "UNKNOWN_ERROR",
-                    clientErrorCode = "",
-                )
-            }
     }
+
+    private data class AuthResult(val signedJwt: String, val clientState: String)
 
     private fun submitResult(
         signedJwt: String,
