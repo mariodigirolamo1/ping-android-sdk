@@ -13,6 +13,13 @@ import com.pingidentity.journey.plugin.ValueCallback
 import com.pingidentity.journey.plugin.callbacks
 import com.pingidentity.orchestrate.ContinueNode
 import com.pingidentity.orchestrate.ContinueNodeAware
+import io.keyless.sdk.biom.liveness.LivenessSettings
+import io.keyless.sdk.configurations.ClientStateType
+import io.keyless.sdk.configurations.OperationInfo
+import io.keyless.sdk.configurations.SetupConfig
+import io.keyless.sdk.configurations.enroll.BiomEnrollConfig
+import io.keyless.sdk.configurations.enroll.PresentationStyle as EnrollPresentationStyle
+import io.keyless.sdk.core.actions.model.JwtSigningInfo
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -23,10 +30,13 @@ import kotlinx.serialization.json.jsonPrimitive
 /**
  * Abstract base for Recognize Journey callbacks.
  *
- * Handles the dual-mode nature of Recognize callbacks: they can arrive either as first-class
- * typed callbacks (e.g. `PingOneRecognizeCallback`) or wrapped inside a `MetadataCallback`.
+ * Parses all common output fields from the server response and exposes them as typed properties.
+ * Handles the dual-mode delivery: fields can arrive either as a first-class typed callback
+ * (`PingOneRecognizeCallback`) or wrapped inside a `MetadataCallback`.
  *
- * Subclasses override [init] to parse their specific JSON fields and expose typed properties.
+ * Shared config builders ([buildSetupConfig], [buildOperationInfo], [buildJwtSigningInfo],
+ * [buildGeneratingClientState]) are defined here. The enroll-specific [buildEnrollConfig] is a
+ * package-level extension on this class to keep enroll SDK types out of the base.
  */
 abstract class AbstractRecognizeCallback : ContinueNodeAware, AbstractCallback() {
 
@@ -111,8 +121,6 @@ abstract class AbstractRecognizeCallback : ContinueNodeAware, AbstractCallback()
      * Parses a single named output field and stores it in the corresponding property.
      *
      * Called once per field in the server JSON output array (or per key in the `data` envelope).
-     * Subclasses may override this and call `super.init(name, value)` to handle any
-     * operation-specific fields in addition to these common ones.
      *
      * @param name Field name as returned by the server (e.g. `"transactionData"`).
      * @param value Raw JSON element for the field value.
@@ -135,6 +143,36 @@ abstract class AbstractRecognizeCallback : ContinueNodeAware, AbstractCallback()
         }
     }
 
+    internal fun buildSetupConfig(): SetupConfig = SetupConfig(
+        apiKey = apiKey,
+        hosts = listOf(host),
+        numberOfEnrollmentCircuits = mobileSDKOptions["numberOfEnrollmentCircuits"]
+            ?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+            ?: SetupConfig.DEFAULT_ENROLLMENT_CIRCUIT_NUMBER,
+    )
+
+    internal fun buildOperationInfo(): OperationInfo? {
+        val opId = mobileSDKOptions["operationInfoId"]?.jsonPrimitive?.contentOrNull
+        val opPayload = mobileSDKOptions["operationInfoPayload"]?.jsonPrimitive?.contentOrNull
+        val opExternalUserId = mobileSDKOptions["operationInfoExternalUserId"]?.jsonPrimitive?.contentOrNull
+        return if (opId != null || opPayload != null || opExternalUserId != null) {
+            OperationInfo(
+                operationId = opId ?: "",
+                payload = opPayload ?: "",
+                externalUserId = opExternalUserId ?: "",
+            )
+        } else null
+    }
+
+    internal fun buildJwtSigningInfo(): JwtSigningInfo = if (audience.isNotBlank()) {
+        JwtSigningInfo(claimTransactionData = transactionData, audience = audience)
+    } else {
+        JwtSigningInfo(claimTransactionData = transactionData)
+    }
+
+    internal fun buildGeneratingClientState(): ClientStateType? =
+        if (generateClientState.equals("true", ignoreCase = true)) ClientStateType.BACKUP else null
+
     protected fun setValueCallback(idSuffix: String, value: String) {
         continueNode.callbacks.forEach { callback ->
             if (callback is ValueCallback && callback.id.contains(idSuffix)) {
@@ -151,4 +189,44 @@ abstract class AbstractRecognizeCallback : ContinueNodeAware, AbstractCallback()
         const val CLIENT_ERROR_SUFFIX = "clientError"
         const val CLIENT_ERROR_CODE_SUFFIX = "clientErrorCode"
     }
+}
+
+/**
+ * Builds a [BiomEnrollConfig] from this callback's current output fields.
+ *
+ * Kept as a package-level extension so the enroll-specific SDK types
+ * ([BiomEnrollConfig], enroll [PresentationStyle]) do not leak into [AbstractRecognizeCallback].
+ *
+ * @param clientStateOverride When non-null, overrides the server-supplied `clientState` field.
+ * Pass an explicit value when enrolling from a clientState received during authentication.
+ */
+internal fun AbstractRecognizeCallback.buildEnrollConfig(
+    clientStateOverride: String? = null,
+): BiomEnrollConfig {
+    val opts = mobileSDKOptions
+    var config = BiomEnrollConfig(
+        operationInfo = buildOperationInfo(),
+        jwtSigningInfo = buildJwtSigningInfo(),
+        generatingClientState = buildGeneratingClientState(),
+        clientState = (clientStateOverride ?: clientState).takeIf { it.isNotEmpty() },
+    )
+    opts["livenessConfiguration"]?.jsonPrimitive?.contentOrNull
+        ?.let { runCatching { LivenessSettings.LivenessConfiguration.valueOf(it) }.getOrNull() }
+        ?.let { config = config.copy(livenessConfiguration = it) }
+    opts["livenessEnvironmentAware"]?.jsonPrimitive?.contentOrNull?.toBoolean()
+        ?.let { config = config.copy(livenessEnvironmentAware = it) }
+    opts["cameraDelaySeconds"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+        ?.let { config = config.copy(cameraDelaySeconds = it) }
+    opts["shouldRetrieveEnrollmentFrame"]?.jsonPrimitive?.contentOrNull?.toBoolean()
+        ?.let { config = config.copy(shouldRetrieveEnrollmentFrame = it) }
+    opts["showSuccessFeedback"]?.jsonPrimitive?.contentOrNull?.toBoolean()
+        ?.let { config = config.copy(showSuccessFeedback = it) }
+    opts["showFailureFeedback"]?.jsonPrimitive?.contentOrNull?.toBoolean()
+        ?.let { config = config.copy(showFailureFeedback = it) }
+    opts["showInstructionsScreen"]?.jsonPrimitive?.contentOrNull?.toBoolean()
+        ?.let { config = config.copy(showInstructionsScreen = it) }
+    opts["presentation"]?.jsonPrimitive?.contentOrNull
+        ?.let { runCatching { EnrollPresentationStyle.valueOf(it) }.getOrNull() }
+        ?.let { config = config.copy(presentationStyle = it) }
+    return config
 }
