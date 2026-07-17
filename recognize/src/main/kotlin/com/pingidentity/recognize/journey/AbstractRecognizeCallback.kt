@@ -199,9 +199,11 @@ abstract class AbstractRecognizeCallback : ContinueNodeAware, AbstractCallback()
  *
  * @param clientStateOverride When non-null, overrides the server-supplied `clientState` field.
  * Pass an explicit value when enrolling from a clientState received during authentication.
+ * @param retrieveSelfie When true, instructs the Keyless SDK to capture and return an enrollment frame.
  */
 internal fun AbstractRecognizeCallback.buildEnrollConfig(
     clientStateOverride: String? = null,
+    retrieveSelfie: Boolean = false,
 ): BiomEnrollConfig {
     val opts = mobileSDKOptions
     var config = BiomEnrollConfig(
@@ -217,14 +219,13 @@ internal fun AbstractRecognizeCallback.buildEnrollConfig(
         ?.let { config = config.copy(livenessEnvironmentAware = it) }
     opts["cameraDelaySeconds"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
         ?.let { config = config.copy(cameraDelaySeconds = it) }
-    opts["shouldRetrieveEnrollmentFrame"]?.jsonPrimitive?.contentOrNull?.toBoolean()
-        ?.let { config = config.copy(shouldRetrieveEnrollmentFrame = it) }
     opts["showSuccessFeedback"]?.jsonPrimitive?.contentOrNull?.toBoolean()
         ?.let { config = config.copy(showSuccessFeedback = it) }
     opts["showFailureFeedback"]?.jsonPrimitive?.contentOrNull?.toBoolean()
         ?.let { config = config.copy(showFailureFeedback = it) }
     opts["showInstructionsScreen"]?.jsonPrimitive?.contentOrNull?.toBoolean()
         ?.let { config = config.copy(showInstructionsScreen = it) }
+    config = config.copy(shouldRetrieveEnrollmentFrame = retrieveSelfie)
     opts["presentation"]?.jsonPrimitive?.contentOrNull
         ?.let { runCatching { EnrollPresentationStyle.valueOf(it) }.getOrNull() }
         ?.let { config = config.copy(presentationStyle = it) }
