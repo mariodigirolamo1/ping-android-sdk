@@ -54,8 +54,7 @@ coilCompose = "2.7.0"
 startupRuntime = "1.2.0"
 
 com-pingidentity-signals = "5.3.0"
-# TODO: replace with actual Recognize SDK version once the artifact coordinates are confirmed
-com-pingidentity-recognize = "5.8.4"
+com-pingidentity-recognize = "6.0.0"
 kotlin-playservices-coroutine = "1.10.2"
 
 barcodeScanning = "17.3.0"

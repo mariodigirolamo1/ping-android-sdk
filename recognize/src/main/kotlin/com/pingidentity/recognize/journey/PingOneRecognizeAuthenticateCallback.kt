@@ -106,7 +106,6 @@ class PingOneRecognizeAuthenticateCallback : AbstractRecognizeCallback() {
             operationInfo = buildOperationInfo(),
             jwtSigningInfo = buildJwtSigningInfo(),
             dynamicLinkingInfo = base.dynamicLinkingInfo,
-            shouldRetrieveTemporaryState = base.shouldRetrieveTemporaryState,
             livenessConfiguration = opts["livenessConfiguration"]?.jsonPrimitive?.contentOrNull
                 ?.let { runCatching { LivenessSettings.LivenessConfiguration.valueOf(it) }.getOrNull() }
                 ?: base.livenessConfiguration,

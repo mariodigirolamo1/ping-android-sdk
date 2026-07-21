@@ -114,7 +114,6 @@ class RecognizeAuthenticateCollector : AbstractRecognizeCollector() {
                 operationInfo = operationInfo,
                 jwtSigningInfo = jwtSigningInfo,
                 dynamicLinkingInfo = base.dynamicLinkingInfo,
-                shouldRetrieveTemporaryState = base.shouldRetrieveTemporaryState,
                 livenessConfiguration = opts["livenessConfiguration"]?.jsonPrimitive?.contentOrNull
                     ?.let { runCatching { LivenessSettings.LivenessConfiguration.valueOf(it) }.getOrNull() }
                     ?: base.livenessConfiguration,
