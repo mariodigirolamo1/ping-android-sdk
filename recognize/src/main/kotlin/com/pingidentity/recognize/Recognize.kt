@@ -13,6 +13,7 @@ import io.keyless.sdk.configurations.auth.BiomAuthConfig
 import io.keyless.sdk.configurations.enroll.BiomEnrollConfig
 import io.keyless.sdk.errorshandling.AuthenticationSuccess
 import io.keyless.sdk.errorshandling.EnrollmentSuccess
+import io.keyless.sdk.errorshandling.KeylessSdkError
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 object Recognize {
@@ -26,7 +27,7 @@ object Recognize {
                         }
                     }
                     is Keyless.KeylessResult.Failure -> {
-                        cont.resume(Result.failure(result.error)) { cause, _, _ ->
+                        cont.resume(Result.failure(RecognizeException.from(result.error))) { cause, _, _ ->
                             cont.cancel(cause)
                         }
                     }
@@ -49,7 +50,7 @@ object Recognize {
                 }
 
                 is Keyless.KeylessResult.Failure -> {
-                    continuation.resume(Result.failure(result.error)) { cause, _, _ ->
+                    continuation.resume(Result.failure(RecognizeException.from(result.error))) { cause, _, _ ->
                         continuation.cancel(cause)
                     }
                 }
@@ -68,7 +69,7 @@ object Recognize {
                     }
                 }
                 is Keyless.KeylessResult.Failure -> {
-                    cont.resume(Result.failure(result.error)) { cause, _, _ ->
+                    cont.resume(Result.failure(RecognizeException.from(result.error as KeylessSdkError))) { cause, _, _ ->
                         cont.cancel(cause)
                     }
                 }
@@ -88,7 +89,7 @@ object Recognize {
                 }
 
                 is Keyless.KeylessResult.Failure -> {
-                    cont.resume(Result.failure(result.error)) { cause, _, _ ->
+                    cont.resume(Result.failure(RecognizeException.from(result.error as KeylessSdkError))) { cause, _, _ ->
                         cont.cancel(cause)
                     }
                 }

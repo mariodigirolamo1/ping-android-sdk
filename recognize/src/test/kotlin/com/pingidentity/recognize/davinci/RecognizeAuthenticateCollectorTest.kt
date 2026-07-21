@@ -8,6 +8,7 @@
 package com.pingidentity.recognize.davinci
 
 import com.pingidentity.recognize.Recognize
+import com.pingidentity.recognize.RecognizeException
 import io.keyless.sdk.errorshandling.AuthenticationSuccess
 import io.mockk.coEvery
 import io.mockk.every
@@ -19,11 +20,11 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
-import java.io.IOException
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -146,7 +147,8 @@ class RecognizeAuthenticateCollectorTest {
 
     @Test
     fun `collect failure from Recognize authenticate populates payload with error message`() = runTest {
-        coEvery { Recognize.authenticate(any()) } returns Result.failure(IOException("auth failed"))
+        val error = RecognizeException(code = 21, message = "auth failed", debuggingInfo = emptyMap())
+        coEvery { Recognize.authenticate(any()) } returns Result.failure(error)
 
         val input = authInput()
         val collector = RecognizeAuthenticateCollector().apply { init(input) }
@@ -154,18 +156,20 @@ class RecognizeAuthenticateCollectorTest {
         val result = collector.collect()
 
         assertTrue(result.isFailure)
+        assertIs<RecognizeException>(result.exceptionOrNull())
         val payload = assertNotNull(collector.payload())
         assertEquals("auth failed", payload["clientError"]?.jsonPrimitive?.content)
+        assertEquals("21", payload["clientErrorCode"]?.jsonPrimitive?.content)
         assertEquals("", payload["signedJwt"]?.jsonPrimitive?.content)
         assertEquals("", payload["clientState"]?.jsonPrimitive?.content)
         assertEquals("", payload["recognizeId"]?.jsonPrimitive?.content)
         assertEquals("", payload["devicePublicSigningKey"]?.jsonPrimitive?.content)
-        assertEquals("", payload["clientErrorCode"]?.jsonPrimitive?.content)
     }
 
     @Test
     fun `collect failure from Recognize setup populates payload with error message`() = runTest {
-        coEvery { Recognize.setup(any()) } returns Result.failure(IOException("setup failed"))
+        val error = RecognizeException(code = 11, message = "setup failed", debuggingInfo = emptyMap())
+        coEvery { Recognize.setup(any()) } returns Result.failure(error)
 
         val input = authInput()
         val collector = RecognizeAuthenticateCollector().apply { init(input) }
@@ -173,13 +177,30 @@ class RecognizeAuthenticateCollectorTest {
         val result = collector.collect()
 
         assertTrue(result.isFailure)
+        assertIs<RecognizeException>(result.exceptionOrNull())
         val payload = assertNotNull(collector.payload())
         assertEquals("setup failed", payload["clientError"]?.jsonPrimitive?.content)
+        assertEquals("11", payload["clientErrorCode"]?.jsonPrimitive?.content)
         assertEquals("", payload["signedJwt"]?.jsonPrimitive?.content)
         assertEquals("", payload["clientState"]?.jsonPrimitive?.content)
         assertEquals("", payload["recognizeId"]?.jsonPrimitive?.content)
         assertEquals("", payload["devicePublicSigningKey"]?.jsonPrimitive?.content)
-        assertEquals("", payload["clientErrorCode"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `collect failure from KeylessSdkError maps code to clientErrorCode`() = runTest {
+        val keylessError = RecognizeException(code = 42, message = "liveness failed", debuggingInfo = emptyMap())
+        coEvery { Recognize.authenticate(any()) } returns Result.failure(keylessError)
+
+        val collector = RecognizeAuthenticateCollector().apply { init(authInput()) }
+        val result = collector.collect()
+
+        assertTrue(result.isFailure)
+        val ex = assertIs<RecognizeException>(result.exceptionOrNull())
+        assertEquals(42, ex.code)
+        val payload = assertNotNull(collector.payload())
+        assertEquals("liveness failed", payload["clientError"]?.jsonPrimitive?.content)
+        assertEquals("42", payload["clientErrorCode"]?.jsonPrimitive?.content)
     }
 
     // ── generateClientState mapping ──────────────────────────────────────────────

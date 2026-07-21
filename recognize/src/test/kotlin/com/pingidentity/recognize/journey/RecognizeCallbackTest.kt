@@ -12,6 +12,7 @@ import com.pingidentity.journey.plugin.Callback
 import com.pingidentity.journey.plugin.ValueCallback
 import com.pingidentity.orchestrate.ContinueNode
 import com.pingidentity.recognize.Recognize
+import com.pingidentity.recognize.RecognizeException
 import com.pingidentity.recognize.RecognizeSuccess
 import io.keyless.sdk.errorshandling.AuthenticationSuccess
 import io.keyless.sdk.errorshandling.EnrollmentSuccess
@@ -39,6 +40,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -286,33 +288,51 @@ class RecognizeCallbackTest {
 
     @Test
     fun `enroll failure from Recognize_enroll writes error to input`() = runTest {
-        val error = IOException("enroll failed")
+        val error = RecognizeException(code = 21, message = "enroll failed", debuggingInfo = emptyMap())
         coEvery { Recognize.enroll(any()) } returns Result.failure(error)
 
         val callback = RecognizeCallback().init(enrollCallbackJson()) as PingOneRecognizeEnrollCallback
         val result = callback.enroll()
         assertTrue(result.isFailure)
-        assertEquals(error, result.exceptionOrNull())
+        assertIs<RecognizeException>(result.exceptionOrNull())
 
         val inputs = callback.payload()["input"]!!.jsonArray
         assertEquals("", inputs[0].jsonObject["value"]!!.jsonPrimitive.content)
         assertEquals("", inputs[1].jsonObject["value"]!!.jsonPrimitive.content)
         assertEquals("", inputs[2].jsonObject["value"]!!.jsonPrimitive.content)
         assertEquals("enroll failed", inputs[3].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("21", inputs[4].jsonObject["value"]!!.jsonPrimitive.content)
     }
 
     @Test
     fun `enroll failure from Recognize_setup writes error to input`() = runTest {
-        val error = IOException("setup failed")
+        val error = RecognizeException(code = 11, message = "setup failed", debuggingInfo = emptyMap())
         coEvery { Recognize.setup(any()) } returns Result.failure(error)
 
         val callback = RecognizeCallback().init(enrollCallbackJson()) as PingOneRecognizeEnrollCallback
         val result = callback.enroll()
         assertTrue(result.isFailure)
-        assertEquals(error, result.exceptionOrNull())
+        assertIs<RecognizeException>(result.exceptionOrNull())
 
         val inputs = callback.payload()["input"]!!.jsonArray
         assertEquals("setup failed", inputs[3].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("11", inputs[4].jsonObject["value"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `enroll failure from KeylessSdkError writes code to clientErrorCode input`() = runTest {
+        val keylessError = RecognizeException(code = 21, message = "user cancelled", debuggingInfo = emptyMap())
+        coEvery { Recognize.enroll(any()) } returns Result.failure(keylessError)
+
+        val callback = RecognizeCallback().init(enrollCallbackJson()) as PingOneRecognizeEnrollCallback
+        val result = callback.enroll()
+        assertTrue(result.isFailure)
+        val ex = assertIs<RecognizeException>(result.exceptionOrNull())
+        assertEquals(21, ex.code)
+
+        val inputs = callback.payload()["input"]!!.jsonArray
+        assertEquals("user cancelled", inputs[3].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("21", inputs[4].jsonObject["value"]!!.jsonPrimitive.content)
     }
 
     // ── Authenticate — success path ──────────────────────────────────────────────
@@ -336,13 +356,13 @@ class RecognizeCallbackTest {
 
     @Test
     fun `authenticate failure from Recognize_authenticate writes error to input`() = runTest {
-        val error = IOException("auth failed")
+        val error = RecognizeException(code = 21, message = "auth failed", debuggingInfo = emptyMap())
         coEvery { Recognize.authenticate(any()) } returns Result.failure(error)
 
         val callback = RecognizeCallback().init(authCallbackJson()) as PingOneRecognizeAuthenticateCallback
         val result = callback.authenticate()
         assertTrue(result.isFailure)
-        assertEquals(error, result.exceptionOrNull())
+        assertIs<RecognizeException>(result.exceptionOrNull())
 
         val inputs = callback.payload()["input"]!!.jsonArray
         assertEquals("", inputs[0].jsonObject["value"]!!.jsonPrimitive.content)
@@ -350,19 +370,38 @@ class RecognizeCallbackTest {
         assertEquals("", inputs[2].jsonObject["value"]!!.jsonPrimitive.content)
         assertEquals("", inputs[3].jsonObject["value"]!!.jsonPrimitive.content)
         assertEquals("auth failed", inputs[4].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("21", inputs[5].jsonObject["value"]!!.jsonPrimitive.content)
     }
 
     @Test
     fun `authenticate failure from Recognize_setup writes error to input`() = runTest {
-        val error = IOException("setup failed")
+        val error = RecognizeException(code = 11, message = "setup failed", debuggingInfo = emptyMap())
         coEvery { Recognize.setup(any()) } returns Result.failure(error)
 
         val callback = RecognizeCallback().init(authCallbackJson()) as PingOneRecognizeAuthenticateCallback
         val result = callback.authenticate()
         assertTrue(result.isFailure)
+        assertIs<RecognizeException>(result.exceptionOrNull())
 
         val inputs = callback.payload()["input"]!!.jsonArray
         assertEquals("setup failed", inputs[4].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("11", inputs[5].jsonObject["value"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `authenticate failure from KeylessSdkError writes code to clientErrorCode input`() = runTest {
+        val keylessError = RecognizeException(code = 42, message = "liveness failed", debuggingInfo = emptyMap())
+        coEvery { Recognize.authenticate(any()) } returns Result.failure(keylessError)
+
+        val callback = RecognizeCallback().init(authCallbackJson()) as PingOneRecognizeAuthenticateCallback
+        val result = callback.authenticate()
+        assertTrue(result.isFailure)
+        val ex = assertIs<RecognizeException>(result.exceptionOrNull())
+        assertEquals(42, ex.code)
+
+        val inputs = callback.payload()["input"]!!.jsonArray
+        assertEquals("liveness failed", inputs[4].jsonObject["value"]!!.jsonPrimitive.content)
+        assertEquals("42", inputs[5].jsonObject["value"]!!.jsonPrimitive.content)
     }
 
     // ── clientState enrollment-check branch ─────────────────────────────────
@@ -428,7 +467,7 @@ class RecognizeCallbackTest {
 
     @Test
     fun `clientState present and enroll fails writes error to input`() = runTest {
-        val error = IOException("enroll from client state failed")
+        val error = RecognizeException(code = 21, message = "enroll from client state failed", debuggingInfo = emptyMap())
         coEvery { Recognize.validateUserAndDeviceActive() } returns Result.failure(IOException("not enrolled"))
         coEvery { Recognize.enroll(any()) } returns Result.failure(error)
 
@@ -1089,7 +1128,7 @@ class RecognizeCallbackTest {
 
     @Test
     fun `MetadataCallback enroll failure writes error to sibling clientError ValueCallback`() = runTest {
-        val error = IOException("enroll failed")
+        val error = RecognizeException(code = 21, message = "enroll failed", debuggingInfo = emptyMap())
         coEvery { Recognize.enroll(any()) } returns Result.failure(error)
 
         val f = makeMetadataContinueNode()
@@ -1120,7 +1159,7 @@ class RecognizeCallbackTest {
 
     @Test
     fun `MetadataCallback authenticate failure writes error to sibling clientError ValueCallback`() = runTest {
-        val error = IOException("auth failed")
+        val error = RecognizeException(code = 21, message = "auth failed", debuggingInfo = emptyMap())
         coEvery { Recognize.authenticate(any()) } returns Result.failure(error)
 
         val f = makeMetadataContinueNode()

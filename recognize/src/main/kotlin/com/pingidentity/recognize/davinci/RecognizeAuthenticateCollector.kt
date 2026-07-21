@@ -8,6 +8,7 @@
 package com.pingidentity.recognize.davinci
 
 import com.pingidentity.recognize.Recognize
+import com.pingidentity.recognize.RecognizeException
 import io.keyless.sdk.biom.liveness.LivenessSettings
 import io.keyless.sdk.configurations.ClientStateType
 import io.keyless.sdk.configurations.OperationInfo
@@ -157,19 +158,21 @@ class RecognizeAuthenticateCollector : AbstractRecognizeCollector() {
                         Result.success(payload)
                     },
                     onFailure = { error ->
+                        val ex = error as RecognizeException
                         result = buildJsonObject {
                             put("signedJwt", "")
                             put("clientState", "")
                             put("recognizeId", "")
                             put("devicePublicSigningKey", "")
-                            put("clientError", error.message ?: "UNKNOWN_ERROR")
-                            put("clientErrorCode", "")
+                            put("clientError", ex.message)
+                            put("clientErrorCode", ex.code.toString())
                         }
-                        Result.failure(error)
+                        Result.failure(ex)
                     },
                 )
         } catch (e: Exception) {
             coroutineContext.ensureActive()
+            // TODO: DaVinci error mapping not yet implemented
             result = buildJsonObject {
                 put("signedJwt", "")
                 put("clientState", "")

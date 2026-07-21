@@ -8,6 +8,7 @@
 package com.pingidentity.recognize.davinci
 
 import com.pingidentity.recognize.Recognize
+import com.pingidentity.recognize.RecognizeException
 import io.keyless.sdk.errorshandling.EnrollmentSuccess
 import io.mockk.coEvery
 import io.mockk.every
@@ -19,11 +20,11 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
-import java.io.IOException
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -140,7 +141,8 @@ class RecognizeEnrollCollectorTest {
 
     @Test
     fun `collect failure from Recognize enroll populates payload with error message`() = runTest {
-        coEvery { Recognize.enroll(any()) } returns Result.failure(IOException("enroll failed"))
+        val error = RecognizeException(code = 21, message = "enroll failed", debuggingInfo = emptyMap())
+        coEvery { Recognize.enroll(any()) } returns Result.failure(error)
 
         val input = enrollInput()
         val collector = RecognizeEnrollCollector().apply { init(input) }
@@ -148,17 +150,19 @@ class RecognizeEnrollCollectorTest {
         val result = collector.collect()
 
         assertTrue(result.isFailure)
+        assertIs<RecognizeException>(result.exceptionOrNull())
         val payload = assertNotNull(collector.payload())
         assertEquals("enroll failed", payload["clientError"]?.jsonPrimitive?.content)
+        assertEquals("21", payload["clientErrorCode"]?.jsonPrimitive?.content)
         assertEquals("", payload["signedJwt"]?.jsonPrimitive?.content)
         assertEquals("", payload["clientState"]?.jsonPrimitive?.content)
         assertEquals("", payload["recognizeId"]?.jsonPrimitive?.content)
-        assertEquals("", payload["clientErrorCode"]?.jsonPrimitive?.content)
     }
 
     @Test
     fun `collect failure from Recognize setup populates payload with error message`() = runTest {
-        coEvery { Recognize.setup(any()) } returns Result.failure(IOException("setup failed"))
+        val error = RecognizeException(code = 11, message = "setup failed", debuggingInfo = emptyMap())
+        coEvery { Recognize.setup(any()) } returns Result.failure(error)
 
         val input = enrollInput()
         val collector = RecognizeEnrollCollector().apply { init(input) }
@@ -166,12 +170,29 @@ class RecognizeEnrollCollectorTest {
         val result = collector.collect()
 
         assertTrue(result.isFailure)
+        assertIs<RecognizeException>(result.exceptionOrNull())
         val payload = assertNotNull(collector.payload())
         assertEquals("setup failed", payload["clientError"]?.jsonPrimitive?.content)
+        assertEquals("11", payload["clientErrorCode"]?.jsonPrimitive?.content)
         assertEquals("", payload["signedJwt"]?.jsonPrimitive?.content)
         assertEquals("", payload["clientState"]?.jsonPrimitive?.content)
         assertEquals("", payload["recognizeId"]?.jsonPrimitive?.content)
-        assertEquals("", payload["clientErrorCode"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `collect failure from KeylessSdkError maps code to clientErrorCode`() = runTest {
+        val keylessError = RecognizeException(code = 21, message = "user cancelled", debuggingInfo = emptyMap())
+        coEvery { Recognize.enroll(any()) } returns Result.failure(keylessError)
+
+        val collector = RecognizeEnrollCollector().apply { init(enrollInput()) }
+        val result = collector.collect()
+
+        assertTrue(result.isFailure)
+        val ex = assertIs<RecognizeException>(result.exceptionOrNull())
+        assertEquals(21, ex.code)
+        val payload = assertNotNull(collector.payload())
+        assertEquals("user cancelled", payload["clientError"]?.jsonPrimitive?.content)
+        assertEquals("21", payload["clientErrorCode"]?.jsonPrimitive?.content)
     }
 
     // ── generateClientState mapping ──────────────────────────────────────────────
