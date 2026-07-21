@@ -7,10 +7,12 @@
 
 package com.pingidentity.recognize.journey
 
+import android.graphics.Bitmap
 import com.pingidentity.journey.plugin.Callback
 import com.pingidentity.journey.plugin.ValueCallback
 import com.pingidentity.orchestrate.ContinueNode
 import com.pingidentity.recognize.Recognize
+import com.pingidentity.recognize.RecognizeSuccess
 import io.keyless.sdk.errorshandling.AuthenticationSuccess
 import io.keyless.sdk.errorshandling.EnrollmentSuccess
 import io.keyless.sdk.configurations.SetupConfig
@@ -23,6 +25,7 @@ import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.slot
 import io.mockk.unmockkObject
+import io.mockk.verify
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -51,11 +54,13 @@ class RecognizeCallbackTest {
         every { signedJwt } returns "signed-jwt"
         every { clientState } returns "client-state"
         every { keylessId } returns "keyless-id"
+        every { enrollmentFrame } returns null
     }
 
     private val authSuccess: AuthenticationSuccess = mockk {
         every { signedJwt } returns "signed-jwt"
         every { clientState } returns "client-state"
+        every { authenticationFrame } returns null
     }
 
     @BeforeTest
@@ -477,36 +482,6 @@ class RecognizeCallbackTest {
         assertTrue(callback.authenticate().isSuccess)
     }
 
-    @Test
-    fun `auth reads shouldRetriveAuthenticationFrame from typo key`() = runTest {
-        val json = Json.parseToJsonElement(
-            """
-            {
-              "type": "PingOneRecognizeCallback",
-              "output": [
-                { "name": "operationType", "value": "AUTHENTICATE" },
-                { "name": "host",          "value": "h" },
-                { "name": "apiKey",        "value": "k" },
-                { "name": "mobileSDKOptions", "value": {
-                    "shouldRetriveAuthenticationFrame": "true"
-                  }
-                }
-              ],
-              "input": [
-                { "name": "IDToken1signedJwt",              "value": "" },
-                { "name": "IDToken1clientState",            "value": "" },
-                { "name": "IDToken1recognizeId",            "value": "" },
-                { "name": "IDToken1devicePublicSigningKey", "value": "" },
-                { "name": "IDToken1clientError",            "value": "" },
-                { "name": "IDToken1clientErrorCode",        "value": "" }
-              ]
-            }
-            """
-        ) as JsonObject
-        val callback = RecognizeCallback().init(json) as PingOneRecognizeAuthenticateCallback
-        assertTrue(callback.authenticate().isSuccess)
-    }
-
     // ── mobileSDKOptions — enroll-specific fields ────────────────────────────────
 
     @Test
@@ -696,35 +671,6 @@ class RecognizeCallbackTest {
     }
 
     @Test
-    fun `enroll mobileSDKOptions shouldRetrieveEnrollmentFrame is forwarded`() = runTest {
-        val json = Json.parseToJsonElement(
-            """
-            {
-              "type": "PingOneRecognizeCallback",
-              "output": [
-                { "name": "operationType",    "value": "ENROLL" },
-                { "name": "host",             "value": "h" },
-                { "name": "apiKey",           "value": "k" },
-                { "name": "mobileSDKOptions", "value": { "shouldRetrieveEnrollmentFrame": "true" } }
-              ],
-              "input": [
-                { "name": "IDToken1signedJwt",       "value": "" },
-                { "name": "IDToken1clientState",     "value": "" },
-                { "name": "IDToken1recognizeId",     "value": "" },
-                { "name": "IDToken1clientError",     "value": "" },
-                { "name": "IDToken1clientErrorCode", "value": "" }
-              ]
-            }
-            """
-        ) as JsonObject
-        val enrollSlot = slot<BiomEnrollConfig>()
-        coEvery { Recognize.enroll(capture(enrollSlot)) } returns Result.success(enrollSuccess)
-        val callback = RecognizeCallback().init(json) as PingOneRecognizeEnrollCallback
-        assertTrue(callback.enroll().isSuccess)
-        assertTrue(enrollSlot.captured.shouldRetrieveEnrollmentFrame)
-    }
-
-    @Test
     fun `enroll mobileSDKOptions showSuccessFeedback is forwarded`() = runTest {
         val json = Json.parseToJsonElement(
             """
@@ -809,6 +755,39 @@ class RecognizeCallbackTest {
         val callback = RecognizeCallback().init(json) as PingOneRecognizeEnrollCallback
         assertTrue(callback.enroll().isSuccess)
         assertEquals(false, enrollSlot.captured.showInstructionsScreen)
+    }
+
+    @Test
+    fun `enroll with retrieveSelfie true sets shouldRetrieveEnrollmentFrame on BiomEnrollConfig`() = runTest {
+        val enrollSlot = slot<BiomEnrollConfig>()
+        coEvery { Recognize.enroll(capture(enrollSlot)) } returns Result.success(enrollSuccess)
+        val callback = RecognizeCallback().init(enrollCallbackJson()) as PingOneRecognizeEnrollCallback
+        assertTrue(callback.enroll(retrieveSelfie = true).isSuccess)
+        assertTrue(enrollSlot.captured.shouldRetrieveEnrollmentFrame)
+    }
+
+    @Test
+    fun `enroll with retrieveSelfie false sets shouldRetrieveEnrollmentFrame false on BiomEnrollConfig`() = runTest {
+        val enrollSlot = slot<BiomEnrollConfig>()
+        coEvery { Recognize.enroll(capture(enrollSlot)) } returns Result.success(enrollSuccess)
+        val callback = RecognizeCallback().init(enrollCallbackJson()) as PingOneRecognizeEnrollCallback
+        assertTrue(callback.enroll().isSuccess)
+        assertEquals(false, enrollSlot.captured.shouldRetrieveEnrollmentFrame)
+    }
+
+    @Test
+    fun `enroll selfie is returned in RecognizeSuccess when frame is present`() = runTest {
+        val bitmap = mockk<Bitmap>()
+        coEvery { Recognize.enroll(any()) } returns Result.success(mockk {
+            every { signedJwt } returns "signed-jwt"
+            every { clientState } returns "client-state"
+            every { keylessId } returns "keyless-id"
+            every { enrollmentFrame } returns bitmap
+        })
+        val callback = RecognizeCallback().init(enrollCallbackJson()) as PingOneRecognizeEnrollCallback
+        val result = callback.enroll(retrieveSelfie = true)
+        assertTrue(result.isSuccess)
+        assertEquals(bitmap, result.getOrThrow().selfie)
     }
 
     @Test
@@ -981,6 +960,64 @@ class RecognizeCallbackTest {
         val callback = RecognizeCallback().init(json) as PingOneRecognizeAuthenticateCallback
         assertTrue(callback.authenticate().isSuccess)
         assertTrue(authSlot.captured.shouldRemovePin)
+    }
+
+    @Test
+    fun `authenticate with retrieveSelfie true sets shouldRetrieveAuthenticationFrame on BiomAuthConfig`() = runTest {
+        val authSlot = slot<BiomAuthConfig>()
+        coEvery { Recognize.authenticate(capture(authSlot)) } returns Result.success(authSuccess)
+        val callback = RecognizeCallback().init(authCallbackJson()) as PingOneRecognizeAuthenticateCallback
+        assertTrue(callback.authenticate(retrieveSelfie = true).isSuccess)
+        assertTrue(authSlot.captured.shouldRetrieveAuthenticationFrame)
+    }
+
+    @Test
+    fun `authenticate with retrieveSelfie false sets shouldRetrieveAuthenticationFrame false`() = runTest {
+        val authSlot = slot<BiomAuthConfig>()
+        coEvery { Recognize.authenticate(capture(authSlot)) } returns Result.success(authSuccess)
+        val callback = RecognizeCallback().init(authCallbackJson()) as PingOneRecognizeAuthenticateCallback
+        assertTrue(callback.authenticate().isSuccess)
+        assertEquals(false, authSlot.captured.shouldRetrieveAuthenticationFrame)
+    }
+
+    @Test
+    fun `authenticate selfie is returned in RecognizeSuccess when frame is present`() = runTest {
+        val bitmap = mockk<Bitmap>()
+        coEvery { Recognize.authenticate(any()) } returns Result.success(mockk {
+            every { signedJwt } returns "signed-jwt"
+            every { clientState } returns "client-state"
+            every { authenticationFrame } returns bitmap
+        })
+        val callback = RecognizeCallback().init(authCallbackJson()) as PingOneRecognizeAuthenticateCallback
+        val result = callback.authenticate(retrieveSelfie = true)
+        assertTrue(result.isSuccess)
+        assertEquals(bitmap, result.getOrThrow().selfie)
+    }
+
+    @Test
+    fun `authenticate enroll from clientState with retrieveSelfie true returns enrollment selfie`() = runTest {
+        val bitmap = mockk<Bitmap>()
+        coEvery { Recognize.validateUserAndDeviceActive() } returns Result.failure(IOException("not enrolled"))
+        coEvery { Recognize.enroll(any()) } returns Result.success(mockk {
+            every { signedJwt } returns "signed-jwt"
+            every { clientState } returns "client-state"
+            every { keylessId } returns "keyless-id"
+            every { enrollmentFrame } returns bitmap
+        })
+        val callback = RecognizeCallback().init(authWithClientStateJson()) as PingOneRecognizeAuthenticateCallback
+        val result = callback.authenticate(retrieveSelfie = true)
+        assertTrue(result.isSuccess)
+        assertEquals(bitmap, result.getOrThrow().selfie)
+    }
+
+    @Test
+    fun `authenticate enroll from clientState with retrieveSelfie true sets shouldRetrieveEnrollmentFrame`() = runTest {
+        coEvery { Recognize.validateUserAndDeviceActive() } returns Result.failure(IOException("not enrolled"))
+        val enrollSlot = slot<BiomEnrollConfig>()
+        coEvery { Recognize.enroll(capture(enrollSlot)) } returns Result.success(enrollSuccess)
+        val callback = RecognizeCallback().init(authWithClientStateJson()) as PingOneRecognizeAuthenticateCallback
+        assertTrue(callback.authenticate(retrieveSelfie = true).isSuccess)
+        assertTrue(enrollSlot.captured.shouldRetrieveEnrollmentFrame)
     }
 
     @Test

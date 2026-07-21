@@ -8,7 +8,7 @@
 package com.pingidentity.recognize.journey
 
 import com.pingidentity.recognize.Recognize
-import io.keyless.sdk.errorshandling.EnrollmentSuccess
+import com.pingidentity.recognize.RecognizeSuccess
 
 /**
  * Journey callback that handles PingOne Recognize **enrollment** operations.
@@ -40,19 +40,18 @@ class PingOneRecognizeEnrollCallback : AbstractRecognizeCallback() {
      * | `mobileSDKOptions.livenessConfiguration`        | `livenessConfiguration`            |
      * | `mobileSDKOptions.livenessEnvironmentAware`     | `livenessEnvironmentAware`         |
      * | `mobileSDKOptions.cameraDelaySeconds`           | `cameraDelaySeconds`               |
-     * | `mobileSDKOptions.shouldRetrieveEnrollmentFrame`| `shouldRetrieveEnrollmentFrame`    |
      * | `mobileSDKOptions.showSuccessFeedback`          | `showSuccessFeedback`              |
      * | `mobileSDKOptions.showFailureFeedback`          | `showFailureFeedback`              |
      * | `mobileSDKOptions.showInstructionsScreen`       | `showInstructionsScreen`           |
      * | `mobileSDKOptions.presentation`                 | `presentationStyle`                |
      * | `mobileSDKOptions.numberOfEnrollmentCircuits`   | `setupConfig.numberOfEnrollmentCircuits` |
      *
-     * @return [Result] containing [EnrollmentSuccess] on success, or a [Throwable] on failure.
+     * @return [Result] containing [RecognizeSuccess] on success, or a [Throwable] on failure.
      */
-    suspend fun enroll(): Result<EnrollmentSuccess> {
+    suspend fun enroll(retrieveSelfie: Boolean = false): Result<RecognizeSuccess> {
         return Recognize.setup(buildSetupConfig())
             .fold(
-                onSuccess = { Recognize.enroll(buildEnrollConfig()) },
+                onSuccess = { Recognize.enroll(buildEnrollConfig(retrieveSelfie = retrieveSelfie)) },
                 onFailure = { Result.failure(it) }
             )
             .onSuccess { success ->
@@ -71,6 +70,14 @@ class PingOneRecognizeEnrollCallback : AbstractRecognizeCallback() {
                     recognizeId = "",
                     clientError = error.message ?: "UNKNOWN_ERROR",
                     clientErrorCode = "",
+                )
+            }
+            .map { success ->
+                RecognizeSuccess(
+                    selfie = success.enrollmentFrame,
+                    signedJwt = success.signedJwt,
+                    clientState = success.clientState,
+                    keylessId = success.keylessId,
                 )
             }
     }

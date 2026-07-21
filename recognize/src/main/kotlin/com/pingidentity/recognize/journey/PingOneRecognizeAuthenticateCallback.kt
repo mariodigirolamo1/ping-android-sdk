@@ -8,6 +8,7 @@
 package com.pingidentity.recognize.journey
 
 import com.pingidentity.recognize.Recognize
+import com.pingidentity.recognize.RecognizeSuccess
 import io.keyless.sdk.biom.liveness.LivenessSettings
 import io.keyless.sdk.configurations.PresentationStyle
 import io.keyless.sdk.configurations.auth.BiomAuthConfig
@@ -53,10 +54,11 @@ class PingOneRecognizeAuthenticateCallback : AbstractRecognizeCallback() {
      * | `mobileSDKOptions.showSuccessFeedback`              | `showSuccessFeedback`                |
      * | `mobileSDKOptions.presentationStyle`                | `presentationStyle`                  |
      * | `mobileSDKOptions.shouldRemovePin`                  | `shouldRemovePin`                    |
-     * | `mobileSDKOptions.shouldRetriveAuthenticationFrame` | `shouldRetrieveAuthenticationFrame`  |
      * | `mobileSDKOptions.numberOfEnrollmentCircuits`       | `setupConfig.numberOfEnrollmentCircuits` |
+     *
+     * @return [Result] containing [RecognizeSuccess] on success, or a [Throwable] on failure.
      */
-    suspend fun authenticate(): Result<Unit> {
+    suspend fun authenticate(retrieveSelfie: Boolean = false): Result<RecognizeSuccess> {
         val storedClientState = clientState
 
         return Recognize.setup(buildSetupConfig())
@@ -66,19 +68,19 @@ class PingOneRecognizeAuthenticateCallback : AbstractRecognizeCallback() {
                     val shouldEnroll = storedClientState.isNotEmpty() &&
                         !Recognize.validateUserAndDeviceActive().isSuccess
                     if (shouldEnroll) {
-                        Recognize.enroll(buildEnrollConfig(clientStateOverride = storedClientState))
-                            .map { success -> AuthResult(success.signedJwt ?: "", success.clientState ?: "") }
+                        Recognize.enroll(buildEnrollConfig(clientStateOverride = storedClientState, retrieveSelfie = retrieveSelfie))
+                            .map { success -> RecognizeSuccess(selfie = success.enrollmentFrame, signedJwt = success.signedJwt, clientState = success.clientState, keylessId = success.keylessId) }
                     } else {
-                        Recognize.authenticate(buildAuthConfig())
-                            .map { success -> AuthResult(success.signedJwt ?: "", success.clientState ?: "") }
+                        Recognize.authenticate(buildAuthConfig(retrieveSelfie))
+                            .map { success -> RecognizeSuccess(selfie = success.authenticationFrame, signedJwt = success.signedJwt, clientState = success.clientState, keylessId = "") }
                     }
                 },
                 onFailure = { Result.failure(it) }
             )
             .onSuccess { result ->
                 submitResult(
-                    signedJwt = result.signedJwt,
-                    clientState = result.clientState,
+                    signedJwt = result.signedJwt ?: "",
+                    clientState = result.clientState ?: "",
                     devicePublicSigningKey = "",
                     clientError = "",
                     clientErrorCode = "",
@@ -93,10 +95,9 @@ class PingOneRecognizeAuthenticateCallback : AbstractRecognizeCallback() {
                     clientErrorCode = "",
                 )
             }
-            .map { }
     }
 
-    private fun buildAuthConfig(): BiomAuthConfig {
+    private fun buildAuthConfig(retrieveSelfie: Boolean): BiomAuthConfig {
         val opts = mobileSDKOptions
         val base = BiomAuthConfig()
         return BiomAuthConfig(
@@ -121,17 +122,9 @@ class PingOneRecognizeAuthenticateCallback : AbstractRecognizeCallback() {
                 ?.let { runCatching { PresentationStyle.valueOf(it) }.getOrNull() }
                 ?: base.presentationStyle,
             generatingClientState = buildGeneratingClientState(),
-            // Server sends this key with a typo (missing 'e' in 'Retrieve')
-            shouldRetrieveAuthenticationFrame = opts["shouldRetriveAuthenticationFrame"]
-                ?.jsonPrimitive?.contentOrNull?.toBoolean() ?: base.shouldRetrieveAuthenticationFrame,
-            savingSecret = base.savingSecret,
-            deletingSecret = base.deletingSecret,
-            retrievingSecret = base.retrievingSecret,
-            shouldRetrieveSecretIDs = base.shouldRetrieveSecretIDs,
+            shouldRetrieveAuthenticationFrame = retrieveSelfie,
         )
     }
-
-    private data class AuthResult(val signedJwt: String, val clientState: String)
 
     private fun submitResult(
         signedJwt: String,
